@@ -1,0 +1,8 @@
+
+- *Shadow Tower* (USA) {POPStarter Fix by Hugopocked}
+
+$SAFEMODE
+SMOOTH (Opcional)
+WIDESCREEN (Opcional)
+$HDTVFIX (Opcional)
+480p (Opcional)

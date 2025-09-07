@@ -1,0 +1,11 @@
+
+- *Yu-Gi-Oh! Forbidden Memories* (All versions) {POPStarter Fix by Hugopocked}
+
+$SAFEMODE
+SMOOTH (Opcional)
+WIDESCREEN (Opcional)
+HDTVFIX (Opcional)
+480p (Opcional)
+//Para cambiar vídeo de PAL a NTSC (Opcional)
+NOPAL
+YPOS_10

@@ -1,0 +1,16 @@
+
+------------------------------------------------------------------------------------------------------
+- *Yu-Gi-Oh! Forbidden Memories* (Todas las versiones) {Arreglo para POPStarter de Hugopocked}
+------------------------------------------------------------------------------------------------------
+
+El parche que ha hecho Hugopocked arregla el parpadeo de la parte superior de la pantalla.
+
+Copia todos los ficheros TROJAN dentro de la carpeta del juego que contiene las tarjetas de 
+memoria virtuales (VMC).
+
+Junto al parche se proporciona un fichero CHEATS.TXT el cual incluye otras funciones opcionales que están 
+desactivadas y que puedes activar editando el fichero si lo deseas.
+
+--------------------------------------------------------------------------------------------------------------------------
+
+El_Patas
