@@ -385,7 +385,7 @@ class ImageTooltip:
 class PopsManagerGUI:
     def __init__(self, root):
         self.root = root
-        root.title(f"POPStarter Manager v{CURRENT_VERSION}")
+        root.title(f"PopCraft Manager v{CURRENT_VERSION}")
         root.geometry("1100x750")
         root.configure(bg=BG_COLOR)
 
