@@ -1,4 +1,4 @@
-<h1 align="center">🎮 POPStation</h1>
+<h1 align="center">🎮 PopCraft Manager </h1>
 <h3 align="center">🚀 Gerenciador POPStarter Ultimate para PS2 🚀</h3>
 
 <p align="center">
