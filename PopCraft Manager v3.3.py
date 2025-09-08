@@ -14,9 +14,10 @@ import json
 import datetime
 import winsound
 from tkinterdnd2 import TkinterDnD, DND_FILES
+import sys
 
 # ---------------- Configurações ----------------
-SUPPORTED_FORMATS = ['.iso', '.bin', '.cue', '.mdf', '.ecm', '.img', '.chd']
+SUPPORTED_FORMATS = ['.iso', '.bin', '.cue', '.mdf', '.ecm', '.img', '.chd', '.gdi']
 POPS_ELF_NAME = "POPS.ELF"
 BIOS_FILE_NAME = "BIOS.BIN"
 SLOT0_VMC_NAME = "SLOT0.VMC"
@@ -37,9 +38,15 @@ ACCENT_COLOR = "#4a90e2"
 ERROR_COLOR = "#ff5555"
 SUCCESS_COLOR = "#50fa7b"
 WARNING_COLOR = "#f1fa8c"
-CURRENT_VERSION = "3.2"
+CURRENT_VERSION = "4.1"
 
 # ---------------- Funções utilitárias ----------------
+def get_script_root():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
+
 def ensure_dir(path):
     if not os.path.exists(path):
         os.makedirs(path)
@@ -81,7 +88,6 @@ def get_file_hash(file_path):
         return "ERROR"
 
 def convert_chd_to_iso_temp(chd_path, log_callback=None, progress_callback=None):
-    """ Extrai CHD para CUE+BIN usando C:\Temp como intermediário — COM LOG EM TEMPO REAL """
     temp_base = "C:\\Temp"
     if not os.path.exists(temp_base):
         try:
@@ -102,7 +108,6 @@ def convert_chd_to_iso_temp(chd_path, log_callback=None, progress_callback=None)
         if progress_callback:
             progress_callback("Iniciando...", 0)
 
-        # ✅ Executa e captura saída em tempo real
         process = subprocess.Popen(
             comando,
             stdout=subprocess.PIPE,
@@ -122,7 +127,6 @@ def convert_chd_to_iso_temp(chd_path, log_callback=None, progress_callback=None)
             if not line:
                 continue
 
-            # ✅ Extrai porcentagem e exibe no log EM TEMPO REAL
             pct_match = re.search(r"(\d+)%", line)
             if pct_match:
                 pct = int(pct_match.group(1))
@@ -131,7 +135,7 @@ def convert_chd_to_iso_temp(chd_path, log_callback=None, progress_callback=None)
                     if progress_callback:
                         progress_callback(f"Extraindo {os.path.basename(chd_path)}", pct)
                     if log_callback:
-                        log_callback(f"   {line}")  # Ex: "75% complete"
+                        log_callback(f"   {line}")  # ✅ MOSTRA NO LOG DA INTERFACE!
             elif "Extracting" in line or "Writing" in line or "Creating" in line:
                 if log_callback:
                     log_callback(f"   {line}")
@@ -168,10 +172,12 @@ def convert_to_vcd(source_path, output_path, log_callback=None):
     return True
 
 def convert_vcd_to_iso(vcd_path, output_iso, log_callback=None):
-    if not os.path.exists(VCD2ISO_EXE):
-        if log_callback: log_callback("❌ vcd2iso.exe não encontrado!")
+    script_root = get_script_root()
+    vcd2iso_path = os.path.join(script_root, VCD2ISO_EXE)
+    if not os.path.exists(vcd2iso_path):
+        if log_callback: log_callback(f"❌ {VCD2ISO_EXE} não encontrado!")
         return False
-    comando = [VCD2ISO_EXE, vcd_path, output_iso]
+    comando = [vcd2iso_path, vcd_path, output_iso]
     try:
         if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(vcd_path)} → ISO...")
         result = subprocess.run(comando, capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -184,11 +190,14 @@ def convert_vcd_to_iso(vcd_path, output_iso, log_callback=None):
         if log_callback: log_callback(f"❌ Erro: {e}")
         return False
 
+# ✅ GARANTIDO: Usa POPS2CUE.EXE para VCD → CUE+BIN
 def convert_vcd_to_cue_bin_with_pops2cue(vcd_path, output_cue, log_callback=None):
-    if not os.path.exists(POPS2CUE_EXE):
-        if log_callback: log_callback("❌ POPS2CUE.EXE não encontrado!")
+    script_root = get_script_root()
+    pops2cue_path = os.path.join(script_root, POPS2CUE_EXE)
+    if not os.path.exists(pops2cue_path):
+        if log_callback: log_callback(f"❌ {POPS2CUE.EXE} não encontrado!")
         return False
-    comando = [POPS2CUE_EXE, vcd_path, output_cue]
+    comando = [pops2cue_path, vcd_path, output_cue]
     try:
         if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(vcd_path)} → CUE+BIN...")
         result = subprocess.run(comando, capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -203,10 +212,18 @@ def convert_vcd_to_cue_bin_with_pops2cue(vcd_path, output_cue, log_callback=None
         return False
 
 def convert_cue_to_vcd(cue_path, vcd_output, log_callback=None):
-    if not os.path.exists(CUE2POPS_EXE):
-        if log_callback: log_callback("❌ cue2pops.exe não encontrado!")
+    script_root = get_script_root()
+    cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
+    if not os.path.exists(cue2pops_path):
+        if log_callback: log_callback(f"❌ {CUE2POPS_EXE} não encontrado!")
         return False
-    comando = [CUE2POPS_EXE, cue_path, vcd_output]
+    
+    bin_path = os.path.splitext(cue_path)[0] + ".bin"
+    if not os.path.exists(bin_path):
+        if log_callback: log_callback(f"❌ Arquivo BIN não encontrado: {bin_path}")
+        return False
+
+    comando = [cue2pops_path, cue_path, vcd_output]
     try:
         if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(cue_path)} → VCD...")
         result = subprocess.run(comando, capture_output=True, text=True, encoding='utf-8', errors='replace')
@@ -214,6 +231,70 @@ def convert_cue_to_vcd(cue_path, vcd_output, log_callback=None):
             if log_callback: log_callback(f"❌ Falha: {result.stderr}")
             return False
         if log_callback: log_callback(f"✅ VCD criado: {os.path.basename(vcd_output)}")
+        return True
+    except Exception as e:
+        if log_callback: log_callback(f"❌ Erro: {e}")
+        return False
+
+# ✅ NOVAS FUNÇÕES PARA CONVERSÃO COM CHDMAN
+def convert_to_chd(input_path, output_chd, log_callback=None):
+    script_root = get_script_root()
+    chdman_path = os.path.join(script_root, CHDMAN_EXE)
+    if not os.path.exists(chdman_path):
+        if log_callback: log_callback(f"❌ {CHDMAN_EXE} não encontrado!")
+        return False
+
+    comando = [chdman_path, "createcd", "-i", input_path, "-o", output_chd]
+    try:
+        if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(input_path)} → CHD...")
+        result = subprocess.run(comando, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        if result.returncode != 0:
+            if log_callback: log_callback(f"❌ Falha: {result.stderr}")
+            return False
+        if log_callback: log_callback(f"✅ CHD criado: {os.path.basename(output_chd)}")
+        return True
+    except Exception as e:
+        if log_callback: log_callback(f"❌ Erro: {e}")
+        return False
+
+def convert_chd_to_gdi(chd_path, output_gdi, log_callback=None):
+    script_root = get_script_root()
+    chdman_path = os.path.join(script_root, CHDMAN_EXE)
+    if not os.path.exists(chdman_path):
+        if log_callback: log_callback(f"❌ {CHDMAN_EXE} não encontrado!")
+        return False
+
+    comando = [chdman_path, "extractcd", "-i", chd_path, "-o", output_gdi]
+    try:
+        if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(chd_path)} → GDI...")
+        result = subprocess.run(comando, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        if result.returncode != 0:
+            if log_callback: log_callback(f"❌ Falha: {result.stderr}")
+            return False
+        if log_callback: log_callback(f"✅ GDI criado: {os.path.basename(output_gdi)}")
+        return True
+    except Exception as e:
+        if log_callback: log_callback(f"❌ Erro: {e}")
+        return False
+
+def convert_chd_to_iso_only(chd_path, output_iso, log_callback=None):
+    script_root = get_script_root()
+    chdman_path = os.path.join(script_root, CHDMAN_EXE)
+    if not os.path.exists(chdman_path):
+        if log_callback: log_callback(f"❌ {CHDMAN_EXE} não encontrado!")
+        return False
+
+    temp_cue = os.path.splitext(output_iso)[0] + ".cue"
+    comando = [chdman_path, "extractcd", "-i", chd_path, "-o", temp_cue, "-ob", output_iso]
+    try:
+        if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(chd_path)} → ISO...")
+        result = subprocess.run(comando, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        if result.returncode != 0:
+            if log_callback: log_callback(f"❌ Falha: {result.stderr}")
+            return False
+        if os.path.exists(temp_cue):
+            os.remove(temp_cue)
+        if log_callback: log_callback(f"✅ ISO criado: {os.path.basename(output_iso)}")
         return True
     except Exception as e:
         if log_callback: log_callback(f"❌ Erro: {e}")
@@ -250,7 +331,6 @@ def update_conf_apps(game_key, target_dir, elf_name):
     with open(conf_file, 'w', encoding='utf-8') as f:
         f.writelines(new_lines)
 
-# ✅ CORRIGIDO: Agora salva como XX.codigo.ELF_COV.png
 def save_cover(elf_name_no_ext, art_dir, cover_path):
     ensure_dir(art_dir)
     ext = os.path.splitext(cover_path)[1]
@@ -258,7 +338,6 @@ def save_cover(elf_name_no_ext, art_dir, cover_path):
     shutil.copy2(cover_path, dest_path)
     return dest_path
 
-# ✅ CORRIGIDO: Agora salva como XX.codigo.ELF_LGO.png
 def save_logo(elf_name_no_ext, art_dir, logo_path):
     ensure_dir(art_dir)
     ext = os.path.splitext(logo_path)[1]
@@ -297,13 +376,19 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
     temp_dir = None
 
     if ext == ".chd":
-        # ✅ Usa a função corrigida com log em tempo real
         cue_path, bin_path, temp_dir = convert_chd_to_iso_temp(file_path, log_callback, progress_callback)
         if not cue_path or not bin_path:
             return False
 
+        script_root = get_script_root()
+        cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
+        if not os.path.exists(cue2pops_path):
+            if log_callback: log_callback(f"❌ {CUE2POPS_EXE} não encontrado!")
+            if temp_dir: shutil.rmtree(temp_dir, ignore_errors=True)
+            return False
+
         vcd_output = os.path.join(pops_dir, vcd_name)
-        comando_cue2pops = [CUE2POPS_EXE, cue_path, vcd_output]
+        comando_cue2pops = [cue2pops_path, cue_path, vcd_output]
         
         try:
             if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(cue_path)} para VCD...")
@@ -314,7 +399,7 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
             if temp_dir: shutil.rmtree(temp_dir, ignore_errors=True)
             return False
 
-        file_path = None  # Não será usado depois
+        file_path = None
 
     else:
         vcd_path = os.path.join(pops_dir, vcd_name)
@@ -325,8 +410,8 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
     copy_file(SLOT0_VMC_NAME, os.path.join(save_folder, SLOT0_VMC_NAME))
     copy_file(SLOT1_VMC_NAME, os.path.join(save_folder, SLOT1_VMC_NAME))
 
-    script_dir = os.path.dirname(__file__)
-    fix_src = os.path.join(script_dir, "_pops_fix", elf_name_no_ext)
+    script_root = get_script_root()
+    fix_src = os.path.join(script_root, "_pops_fix", elf_name_no_ext)
     if os.path.exists(fix_src):
         if log_callback: log_callback(f"🔧 Aplicando fix para {elf_name_no_ext}...")
         copy_tree(fix_src, save_folder, log_callback)
@@ -385,7 +470,7 @@ class ImageTooltip:
 class PopsManagerGUI:
     def __init__(self, root):
         self.root = root
-        root.title(f"PopCraft Manager v{CURRENT_VERSION}")
+        root.title(f"POPStation v{CURRENT_VERSION}")
         root.geometry("1100x750")
         root.configure(bg=BG_COLOR)
 
@@ -404,6 +489,9 @@ class PopsManagerGUI:
         self.status_var = tk.StringVar(value="Pronto")
         self.status_bar = tk.Label(root, textvariable=self.status_var, bg="#333", fg="#aaa", anchor="w", padx=10)
         self.status_bar.pack(side="bottom", fill="x")
+
+        script_root = get_script_root()
+        print(f"[INFO] Pasta raiz do script: {script_root}")
 
         self.create_menu()
         self.notebook = ttk.Notebook(root)
@@ -540,6 +628,8 @@ class PopsManagerGUI:
         formats = [
             ("CUE + BIN", "cue_bin"),
             ("ISO", "iso"),
+            ("GDI", "gdi"),
+            ("CHD", "chd"),
             ("VCD", "vcd"),
         ]
         for text, value in formats:
@@ -576,7 +666,7 @@ class PopsManagerGUI:
             "help": "Comandos: help, clear, list, version",
             "clear": lambda: self.console_output.delete("1.0", "end"),
             "list": lambda: self.list_games_in_console(),
-            "version": f"POPStarter Manager v{CURRENT_VERSION}"
+            "version": f"POPStation v{CURRENT_VERSION}"
         }
         if cmd in responses:
             if callable(responses[cmd]):
@@ -603,8 +693,9 @@ class PopsManagerGUI:
                     self.console_output.insert("end", f" - {game_key}\n")
 
     def find_bios_files(self):
+        script_root = get_script_root()
         bios_files = []
-        for file in os.listdir("."):
+        for file in os.listdir(script_root):
             if file.upper().startswith("BIOS") and file.upper().endswith(".BIN"):
                 bios_files.append(file)
         return bios_files if bios_files else ["BIOS.BIN"]
@@ -612,7 +703,7 @@ class PopsManagerGUI:
     def log(self, message, level="info", advanced=False):
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         full_message = f"[{timestamp}] {message}"
-        print(full_message)  # ✅ Mostra no terminal EM TEMPO REAL
+        print(full_message)  # ✅ Mostra no terminal
         
         if advanced:
             tag = "error" if "❌" in message else "success" if "✅" in message else ""
@@ -624,7 +715,7 @@ class PopsManagerGUI:
             self.log_text.see(tk.END)
         
         ensure_dir("logs")
-        with open(os.path.join("logs", "pops_manager.log"), "a", encoding="utf-8") as f:
+        with open(os.path.join("logs", "popstation.log"), "a", encoding="utf-8") as f:
             f.write(full_message + "\n")
         
         self.status_var.set(message[:50] + "..." if len(message) > 50 else message)
@@ -636,7 +727,7 @@ class PopsManagerGUI:
         self.root.update_idletasks()
 
     def select_files(self):
-        files = filedialog.askopenfilenames(filetypes=[("Jogos PS1/CHD", "*.iso *.bin *.cue *.mdf *.ecm *.img *.chd")])
+        files = filedialog.askopenfilenames(filetypes=[("Jogos PS1/CHD", "*.iso *.bin *.cue *.mdf *.ecm *.img *.chd *.gdi")])
         if files:
             self.files.extend(files)
             self.update_file_listbox()
@@ -682,14 +773,19 @@ class PopsManagerGUI:
             messagebox.showwarning("⚠️ Aviso", "Selecione arquivos e pasta destino!")
             return
 
-        essential_files = [POPS_ELF_NAME, SLOT0_VMC_NAME, SLOT1_VMC_NAME, CUE2POPS_EXE]
+        script_root = get_script_root()
+        essential_files = [POPS_ELF_NAME, SLOT0_VMC_NAME, SLOT1_VMC_NAME]
         bios_selected = self.bios_var.get()
-        if not os.path.exists(bios_selected):
+        if not os.path.exists(os.path.join(script_root, bios_selected)):
             messagebox.showerror("❌ Erro", f"BIOS não encontrado: {bios_selected}")
             return
         essential_files.append(bios_selected)
 
-        missing = [f for f in essential_files if not os.path.exists(f)]
+        missing = []
+        for f in essential_files:
+            if not os.path.exists(os.path.join(script_root, f)):
+                missing.append(f)
+
         if missing:
             messagebox.showerror("❌ Erro", f"Arquivos ausentes: {', '.join(missing)}")
             return
@@ -700,11 +796,10 @@ class PopsManagerGUI:
 
         pops_dir = os.path.join(self.target_dir, POPS_DIR_NAME)
         ensure_dir(pops_dir)
-        copy_file(bios_selected, os.path.join(pops_dir, BIOS_FILE_NAME))
-        copy_file(POPS_ELF_NAME, os.path.join(pops_dir, "POPSTARTER.ELF"))
+        copy_file(os.path.join(script_root, bios_selected), os.path.join(pops_dir, BIOS_FILE_NAME))
+        copy_file(os.path.join(script_root, POPS_ELF_NAME), os.path.join(pops_dir, "POPSTARTER.ELF"))
 
-        script_dir = os.path.dirname(__file__)
-        copy_src = os.path.join(script_dir, "_copy")
+        copy_src = os.path.join(script_root, "_copy")
         if os.path.exists(copy_src):
             self.log(f"📦 Copiando conteúdo de _copy para POPS...")
             copy_tree(copy_src, pops_dir, self.log)
@@ -721,7 +816,7 @@ class PopsManagerGUI:
         self.update_progress("✅ Concluído!", total * 100)
         self.log(f"🎉 {success_count}/{total} jogos processados!", "success")
         try:
-            winsound.PlaySound("success.wav", winsound.SND_ASYNC)
+            winsound.PlaySound(os.path.join(script_root, "success.wav"), winsound.SND_ASYNC)
         except: pass
 
         self.files = []
@@ -764,7 +859,6 @@ class PopsManagerGUI:
 
                     cover_path = logo_path = None
                     for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
-                        # ✅ BUSCA COM PREFIXO XX.
                         test_cover = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_COV{ext}")
                         test_logo = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_LGO{ext}")
                         if os.path.exists(test_cover):
@@ -873,7 +967,6 @@ class PopsManagerGUI:
             if os.path.exists(path): os.remove(path)
         for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
             for prefix in [".ELF_COV", ".ELF_LGO"]:
-                # ✅ APAGA COM PREFIXO XX.
                 file_path = os.path.join(art_dir, f"XX.{elf_name_no_ext}{prefix}{ext}")
                 if os.path.exists(file_path): os.remove(file_path)
         if os.path.exists(conf_file):
@@ -1056,7 +1149,7 @@ class PopsManagerGUI:
             self.log("🎨 Modo Retro desativado.", "success")
 
     def show_about(self):
-        messagebox.showinfo("Sobre", f"POPStarter Manager v{CURRENT_VERSION}\n\nFerramenta para gerenciar jogos PS1 no POPStarter/OPL.\n\nDesenvolvido para a comunidade PS2 Homebrew.\n\nPressione Ctrl+Shift+R para modo RETRO!")
+        messagebox.showinfo("Sobre", f"POPStation v{CURRENT_VERSION}\n\nGerenciador POPStarter Ultimate para PS2.\n\nDesenvolvido para a comunidade PS2 Homebrew.\n\nPressione Ctrl+Shift+R para modo RETRO!")
 
     def delete_all_games(self):
         if not self.target_dir or not messagebox.askyesno("⚠️ Confirmação", "Apagar TODOS os jogos?"):
@@ -1078,8 +1171,7 @@ class PopsManagerGUI:
             for item in os.listdir(art_dir):
                 if item.endswith((".ELF_COV", ".ELF_LGO")):
                     for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
-                        # ✅ Apaga com prefixo XX.
-                        fp = os.path.join(art_dir, f"XX.{item[:-8]}{item[-8:]}{ext}")  # Ajusta para manter o padrão
+                        fp = os.path.join(art_dir, item + ext)
                         if os.path.exists(fp): os.remove(fp)
 
         for file in os.listdir(self.target_dir):
@@ -1094,7 +1186,7 @@ class PopsManagerGUI:
         self.refresh_manage_tab()
 
     def select_advanced_file(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Todos formatos suportados", "*.chd *.cue *.bin *.iso *.vcd")])
+        file_path = filedialog.askopenfilename(filetypes=[("Todos formatos suportados", "*.chd *.cue *.bin *.iso *.vcd *.gdi")])
         if file_path:
             self.advanced_files = [file_path]
             self.advanced_file_label.config(text=f"Arquivo: {os.path.basename(file_path)}")
@@ -1120,12 +1212,31 @@ class PopsManagerGUI:
         input_ext = os.path.splitext(input_file)[1].lower()
         base_name = os.path.splitext(os.path.basename(input_file))[0]
 
+        script_root = get_script_root()
+        chdman_path = os.path.join(script_root, CHDMAN_EXE)
+        cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
+        pops2cue_path = os.path.join(script_root, POPS2CUE_EXE)
+        vcd2iso_path = os.path.join(script_root, VCD2ISO_EXE)
+
         try:
-            if input_ext == ".chd" and output_format == "cue_bin":
+            # ✅ CONVERSÃO PARA CHD
+            if output_format == "chd" and input_ext in [".cue", ".iso", ".gdi"]:
+                if not os.path.exists(chdman_path):
+                    self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
+                    return
+                output_chd = os.path.join(self.advanced_output_folder, f"{base_name}.chd")
+                if convert_to_chd(input_file, output_chd, lambda msg: self.log(msg, advanced=True)):
+                    self.log(f"✅ CHD salvo: {output_chd}", "success", advanced=True)
+
+            # ✅ CHD → CUE+BIN
+            elif input_ext == ".chd" and output_format == "cue_bin":
+                if not os.path.exists(chdman_path):
+                    self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
+                    return
                 self.log(f"▶️ Convertendo {os.path.basename(input_file)} para CUE+BIN...", advanced=True)
                 cue_temp, bin_temp, temp_dir = convert_chd_to_iso_temp(
                     input_file,
-                    lambda msg: self.log(msg, advanced=True),  # ✅ LOG EM TEMPO REAL
+                    lambda msg: self.log(msg, advanced=True),  # ✅ MOSTRA NO LOG DA GUI!
                     None
                 )
                 if cue_temp and bin_temp and os.path.exists(cue_temp) and os.path.exists(bin_temp):
@@ -1141,48 +1252,74 @@ class PopsManagerGUI:
                 if 'temp_dir' in locals() and temp_dir:
                     shutil.rmtree(temp_dir, ignore_errors=True)
 
-            elif input_ext == ".chd" and output_format == "iso":
-                self.log(f"▶️ Convertendo {os.path.basename(input_file)} para ISO...", advanced=True)
-                cue_temp, bin_temp, temp_dir = convert_chd_to_iso_temp(
-                    input_file,
-                    lambda msg: self.log(msg, advanced=True),  # ✅ LOG EM TEMPO REAL
-                    None
-                )
-                if cue_temp and bin_temp and os.path.exists(bin_temp):
-                    dest_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
-                    shutil.move(bin_temp, dest_iso)
-                    self.log(f"✅ ISO salvo: {dest_iso}", "success", advanced=True)
-                    if os.path.exists(cue_temp):
-                        os.remove(cue_temp)
-                else:
-                    self.log("❌ Falha na extração do CHD.", "error", advanced=True)
-                if 'temp_dir' in locals() and temp_dir:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+            # ✅ CHD → GDI
+            elif input_ext == ".chd" and output_format == "gdi":
+                if not os.path.exists(chdman_path):
+                    self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
+                    return
+                output_gdi = os.path.join(self.advanced_output_folder, f"{base_name}.gdi")
+                if convert_chd_to_gdi(input_file, output_gdi, lambda msg: self.log(msg, advanced=True)):
+                    self.log(f"✅ GDI salvo: {output_gdi}", "success", advanced=True)
 
-            elif input_ext in [".cue", ".bin", ".iso"] and output_format == "vcd":
-                self.log(f"▶️ Convertendo para VCD...", advanced=True)
+            # ✅ CHD → ISO
+            elif input_ext == ".chd" and output_format == "iso":
+                if not os.path.exists(chdman_path):
+                    self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
+                    return
+                output_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
+                if convert_chd_to_iso_only(input_file, output_iso, lambda msg: self.log(msg, advanced=True)):
+                    self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
+
+            # ✅ CUE → VCD (com verificação de .bin)
+            elif input_ext == ".cue" and output_format == "vcd":
+                if not os.path.exists(cue2pops_path):
+                    self.log(f"❌ {CUE2POPS_EXE} não encontrado!", "error", advanced=True)
+                    return
+                bin_path = os.path.splitext(input_file)[0] + ".bin"
+                if not os.path.exists(bin_path):
+                    self.log(f"❌ Arquivo BIN não encontrado: {bin_path}", "error", advanced=True)
+                    return
+                self.log(f"▶️ Convertendo {os.path.basename(input_file)} para VCD...", advanced=True)
                 output_path = os.path.join(self.advanced_output_folder, f"{base_name}.vcd")
-                if input_ext == ".cue":
-                    if convert_cue_to_vcd(input_file, output_path, lambda msg: self.log(msg, advanced=True)):
-                        self.log(f"✅ VCD salvo: {output_path}", "success", advanced=True)
-                else:
-                    convert_to_vcd(input_file, output_path, lambda msg: self.log(msg, advanced=True))
+                if convert_cue_to_vcd(input_file, output_path, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ VCD salvo: {output_path}", "success", advanced=True)
 
+            # ✅ ISO/BIN → VCD (cópia direta)
+            elif input_ext in [".iso", ".bin"] and output_format == "vcd":
+                self.log(f"▶️ Convertendo {os.path.basename(input_file)} para VCD...", advanced=True)
+                output_path = os.path.join(self.advanced_output_folder, f"{base_name}.vcd")
+                convert_to_vcd(input_file, output_path, lambda msg: self.log(msg, advanced=True))
+                self.log(f"✅ VCD salvo: {output_path}", "success", advanced=True)
+
+            # ✅ VCD → CUE+BIN (com POPS2CUE.EXE)
             elif input_ext == ".vcd" and output_format == "cue_bin":
-                self.log(f"▶️ Convertendo para CUE+BIN...", advanced=True)
+                if not os.path.exists(pops2cue_path):
+                    self.log(f"❌ {POPS2CUE_EXE} não encontrado!", "error", advanced=True)
+                    return
+                self.log(f"▶️ Convertendo {os.path.basename(input_file)} para CUE+BIN...", advanced=True)
                 output_cue = os.path.join(self.advanced_output_folder, f"{base_name}.cue")
                 if convert_vcd_to_cue_bin_with_pops2cue(input_file, output_cue, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ CUE+BIN salvos em: {self.advanced_output_folder}", "success", advanced=True)
 
+            # ✅ VCD → ISO
             elif input_ext == ".vcd" and output_format == "iso":
-                self.log(f"▶️ Convertendo para ISO...", advanced=True)
+                if not os.path.exists(vcd2iso_path):
+                    self.log(f"❌ {VCD2ISO_EXE} não encontrado!", "error", advanced=True)
+                    return
+                self.log(f"▶️ Convertendo {os.path.basename(input_file)} para ISO...", advanced=True)
                 output_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
                 if convert_vcd_to_iso(input_file, output_iso, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
 
             else:
                 self.log("❌ Conversão não suportada para esta combinação.", "error", advanced=True)
+                return
+
+            # ✅ TOCA SOM AO FINALIZAR (só se não houve erro)
+            try:
+                winsound.PlaySound(os.path.join(script_root, "success.wav"), winsound.SND_ASYNC)
+            except:
+                pass
 
         except Exception as e:
             self.log(f"❌ Erro: {e}", "error", advanced=True)
@@ -1190,9 +1327,12 @@ class PopsManagerGUI:
 # ---------------- Inicialização ----------------
 if __name__ == "__main__":
     ensure_dir("logs")
-    log_file = os.path.join("logs", "pops_manager.log")
+    log_file = os.path.join("logs", "popstation.log")
     if os.path.exists(log_file):
         open(log_file, "w", encoding="utf-8").close()
+
+    script_root = get_script_root()
+    print(f"[INFO] Pasta raiz do script: {script_root}")
 
     root = TkinterDnD.Tk()
     app = PopsManagerGUI(root)
