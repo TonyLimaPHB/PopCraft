@@ -10,17 +10,19 @@ import datetime
 import sys
 
 # ---------------- Configurações ----------------
-SUPPORTED_FORMATS = ['.iso', '.bin', '.cue', '.mdf', '.ecm', '.img', '.chd', '.gdi']
+SUPPORTED_FORMATS = ['.iso', '.bin', '.cue', '.mdf', '.ecm', '.img', '.chd', '.gdi', '.zso']  # ✅ ADICIONADO .ZSO
 POPS_ELF_NAME = "POPS.ELF"
 BIOS_FILE_NAME = "BIOS.BIN"
 SLOT0_VMC_NAME = "SLOT0.VMC"
 SLOT1_VMC_NAME = "SLOT1.VMC"
 POPS_DIR_NAME = "POPS"
 ART_DIR_NAME = "ART"
+
 CHDMAN_EXE = "chdman.exe"
 CUE2POPS_EXE = "cue2pops.exe"
 POPS2CUE_EXE = "POPS2CUE.EXE"
 VCD2ISO_EXE = "vcd2iso.exe"
+ZISO_EXE = "ziso.exe"  # ✅ NOVA CONSTANTE PARA CONVERSÃO ZSO
 
 # ---------------- Funções utilitárias ----------------
 def get_script_root():
@@ -69,6 +71,7 @@ def get_file_hash(file_path):
     except:
         return "ERROR"
 
+# ---------------- Conversões Avançadas ----------------
 def convert_chd_to_iso_temp(chd_path, log_callback=None, progress_callback=None):
     temp_base = "C:\\Temp"
     if not os.path.exists(temp_base):
@@ -316,6 +319,251 @@ def convert_chd_to_iso_only(chd_path, output_iso, log_callback=None):
         if log_callback: log_callback(f"❌ Erro: {e}")
         return False
 
+# ✅ ✅ ✅ NOVAS FUNÇÕES: ISO ↔ ZSO COM AMBIENTE ISOLADO E LIMPEZA AUTOMÁTICA
+def convert_iso_to_zso(iso_path, output_zso, log_callback=None):
+    """Converte ISO → ZSO em ambiente isolado: copia ziso.exe e usa pasta temporária dentro da pasta do jogo."""
+    script_root = get_script_root()
+    ziso_exe = os.path.join(script_root, ZISO_EXE)
+
+    if not os.path.exists(ziso_exe):
+        if log_callback:
+            log_callback(f"❌ {ZISO_EXE} não encontrado na pasta do script.")
+        return False
+
+    if not os.path.exists(iso_path):
+        if log_callback:
+            log_callback(f"❌ Arquivo ISO não encontrado: {iso_path}")
+        return False
+
+    # ✅ Obter pasta do arquivo ISO (não a raiz do script!)
+    iso_dir = os.path.dirname(iso_path)
+    iso_filename = os.path.basename(iso_path)
+    iso_name_no_ext = os.path.splitext(iso_filename)[0]
+
+    # ✅ Criar pastas temporárias dentro da pasta do jogo
+    iso_temp_dir = os.path.join(iso_dir, "ISO")
+    zso_temp_dir = os.path.join(iso_dir, "ZSO")
+    ensure_dir(iso_temp_dir)
+    ensure_dir(zso_temp_dir)
+
+    # ✅ Caminhos temporários
+    temp_iso_path = os.path.join(iso_temp_dir, iso_filename)
+    temp_ziso_exe = os.path.join(iso_temp_dir, ZISO_EXE)
+    temp_zso_path = os.path.join(zso_temp_dir, f"{iso_name_no_ext}.zso")
+
+    try:
+        # ✅ Passo 1: Copiar o arquivo ISO para a pasta ISO/
+        if log_callback:
+            log_callback(f"📁 Movendo ISO para ambiente temporário: {iso_filename}")
+        shutil.copy2(iso_path, temp_iso_path)
+
+        # ✅ Passo 2: Copiar ziso.exe para a pasta ISO/
+        if log_callback:
+            log_callback(f"🔧 Copiando {ZISO_EXE} para ambiente temporário...")
+        shutil.copy2(ziso_exe, temp_ziso_exe)
+
+        # ✅ Passo 3: Executar conversão usando -c9 (sintaxe correta para a maioria dos ziso.exe)
+        if log_callback:
+            log_callback(f"▶️ Convertendo {iso_filename} → {iso_name_no_ext}.zso (ambiente isolado)...")
+        
+        # ✅ ✅ ✅ CORREÇÃO CRÍTICA: Usa -c9, NÃO -c -l 9
+        comando = [temp_ziso_exe, "-c9", temp_iso_path, temp_zso_path]
+        result = subprocess.run(
+            comando,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            cwd=iso_temp_dir  # ✅ Executa dentro da pasta ISO/
+        )
+
+        if result.returncode != 0:
+            if log_callback:
+                log_callback(f"❌ Falha na conversão ISO → ZSO: {result.stderr.strip()}")
+            return False
+
+        # ✅ Passo 4: Verificar se o ZSO foi gerado
+        if not os.path.exists(temp_zso_path):
+            if log_callback:
+                log_callback(f"❌ Arquivo ZSO não foi gerado após conversão!")
+            return False
+
+        # ✅ Passo 5: Mover o ZSO resultante para a pasta de saída escolhida
+        if log_callback:
+            log_callback(f"📤 Movendo ZSO resultante para destino final: {os.path.basename(output_zso)}")
+        shutil.move(temp_zso_path, output_zso)
+
+        # ✅ Passo 6: Limpeza: apagar pastas temporárias e ziso.exe
+        if log_callback:
+            log_callback(f"🧹 Limpando ambiente temporário...")
+
+        # Remove o ziso.exe copiado
+        if os.path.exists(temp_ziso_exe):
+            os.remove(temp_ziso_exe)
+
+        # Remove a pasta ISO (vazia agora)
+        if os.path.exists(iso_temp_dir) and len(os.listdir(iso_temp_dir)) == 0:
+            os.rmdir(iso_temp_dir)
+
+        # Remove a pasta ZSO (vazia agora)
+        if os.path.exists(zso_temp_dir) and len(os.listdir(zso_temp_dir)) == 0:
+            os.rmdir(zso_temp_dir)
+
+        if log_callback:
+            log_callback(f"✅ Conversão ISO → ZSO concluída com sucesso!")
+            log_callback(f"   Arquivo final: {output_zso}")
+
+        return True
+
+    except Exception as e:
+        if log_callback:
+            log_callback(f"❌ Erro durante conversão ISO → ZSO: {e}")
+        # Tenta limpar mesmo em caso de erro
+        try:
+            if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe):
+                os.remove(temp_ziso_exe)
+            if os.path.exists(iso_temp_dir):
+                shutil.rmtree(iso_temp_dir, ignore_errors=True)
+            if os.path.exists(zso_temp_dir):
+                shutil.rmtree(zso_temp_dir, ignore_errors=True)
+        except:
+            pass
+        return False
+
+
+def convert_zso_to_iso(zso_path, output_iso, log_callback=None):
+    """Converte ZSO → ISO em ambiente isolado usando ziso.exe"""
+    script_root = get_script_root()
+    ziso_exe = os.path.join(script_root, ZISO_EXE)
+
+    # Verifica se o ziso.exe existe
+    if not os.path.exists(ziso_exe):
+        if log_callback:
+            log_callback(f"❌ {ZISO_EXE} não encontrado na pasta do script.")
+        return False
+
+    # Verifica se o arquivo ZSO existe
+    if not os.path.exists(zso_path):
+        if log_callback:
+            log_callback(f"❌ Arquivo ZSO não encontrado: {zso_path}")
+        return False
+
+    # Obter pasta do arquivo ZSO
+    zso_dir = os.path.dirname(zso_path)
+    zso_filename = os.path.basename(zso_path)
+    zso_name_no_ext = os.path.splitext(zso_filename)[0]
+
+    # Criar pastas temporárias dentro da pasta do jogo
+    zso_temp_dir = os.path.join(zso_dir, "ZSO")
+    iso_temp_dir = os.path.join(zso_dir, "ISO")
+    ensure_dir(zso_temp_dir)
+    ensure_dir(iso_temp_dir)
+
+    # Caminhos temporários
+    temp_zso_path = os.path.join(zso_temp_dir, zso_filename)
+    temp_ziso_exe = os.path.join(zso_temp_dir, ZISO_EXE)
+    temp_iso_path = os.path.join(iso_temp_dir, f"{zso_name_no_ext}.iso")
+
+    try:
+        # Passo 1: Copiar o arquivo ZSO para a pasta ZSO/
+        if log_callback:
+            log_callback(f"📁 Movendo ZSO para ambiente temporário: {zso_filename}")
+        shutil.copy2(zso_path, temp_zso_path)
+
+        # Passo 2: Copiar ziso.exe para a pasta ZSO/
+        if log_callback:
+            log_callback(f"🔧 Copiando {ZISO_EXE} para ambiente temporário...")
+        shutil.copy2(ziso_exe, temp_ziso_exe)
+
+        # Passo 3: Executar conversão usando -c 0 (extração)
+        if log_callback:
+            log_callback(f"▶️ Convertendo {zso_filename} → {zso_name_no_ext}.iso (ambiente isolado)...")
+        
+        # Usa -c 0 para descompactar, não -x
+        comando = [temp_ziso_exe, "-c", "0", temp_zso_path, temp_iso_path]
+        result = subprocess.run(
+            comando,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            cwd=zso_temp_dir  # Executa dentro da pasta ZSO/
+        )
+
+        # Captura de erro detalhada
+        if result.returncode != 0:
+            if log_callback:
+                log_callback(f"❌ Falha na conversão ZSO → ISO: {result.stderr.strip()}")
+                log_callback(f"📝 Detalhes do erro: {result.stdout.strip()}")
+            return False
+
+        # Passo 4: Verificar se o ISO foi gerado
+        if not os.path.exists(temp_iso_path):
+            if log_callback:
+                log_callback(f"❌ Arquivo ISO não foi gerado após conversão!")
+            return False
+
+        # Passo 5: Mover o ISO resultante para a pasta de saída escolhida
+        if log_callback:
+            log_callback(f"📤 Movendo ISO resultante para destino final: {os.path.basename(output_iso)}")
+        shutil.move(temp_iso_path, output_iso)
+
+        # Passo 6: Limpeza: apagar pastas temporárias e ziso.exe
+        if log_callback:
+            log_callback(f"🧹 Limpando ambiente temporário...")
+
+        # Remove o ziso.exe copiado
+        if os.path.exists(temp_ziso_exe):
+            os.remove(temp_ziso_exe)
+
+        # Remove a pasta ZSO (vazia agora)
+        if os.path.exists(zso_temp_dir) and len(os.listdir(zso_temp_dir)) == 0:
+            os.rmdir(zso_temp_dir)
+
+        # Remove a pasta ISO (vazia agora)
+        if os.path.exists(iso_temp_dir) and len(os.listdir(iso_temp_dir)) == 0:
+            os.rmdir(iso_temp_dir)
+
+        if log_callback:
+            log_callback(f"✅ Conversão ZSO → ISO concluída com sucesso!")
+            log_callback(f"   Arquivo final: {output_iso}")
+
+        return True
+
+    except Exception as e:
+        if log_callback:
+            log_callback(f"❌ Erro durante conversão ZSO → ISO: {e}")
+        # Tenta limpar mesmo em caso de erro
+        try:
+            if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe):
+                os.remove(temp_ziso_exe)
+            if os.path.exists(zso_temp_dir):
+                shutil.rmtree(zso_temp_dir, ignore_errors=True)
+            if os.path.exists(iso_temp_dir):
+                shutil.rmtree(iso_temp_dir, ignore_errors=True)
+        except:
+            pass
+        return False
+
+
+
+    except Exception as e:
+        if log_callback:
+            log_callback(f"❌ Erro durante conversão ZSO → ISO: {e}")
+        # Tenta limpar mesmo em caso de erro
+        try:
+            if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe):
+                os.remove(temp_ziso_exe)
+            if os.path.exists(zso_temp_dir):
+                shutil.rmtree(zso_temp_dir, ignore_errors=True)
+            if os.path.exists(iso_temp_dir):
+                shutil.rmtree(iso_temp_dir, ignore_errors=True)
+        except:
+            pass
+        return False
+
+
+# ---------------- Funções de Backup e Configuração ----------------
 def backup_conf_file(target_dir):
     conf_file = os.path.join(target_dir, "conf_apps.cfg")
     if not os.path.exists(conf_file):

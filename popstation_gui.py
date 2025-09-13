@@ -6,7 +6,6 @@ import webbrowser
 import datetime
 import winsound
 from tkinterdnd2 import TkinterDnD, DND_FILES
-
 from popstation_core import *
 
 # ---------------- Configurações de GUI ----------------
@@ -155,7 +154,6 @@ class PopsManagerGUI:
 
         frame_bios = ttk.LabelFrame(self.tab_convert, text="2. 🖥️ BIOS")
         frame_bios.pack(fill="x", padx=10, pady=5)
-
         self.bios_var = tk.StringVar()
         if self.bios_files:
             self.bios_var.set(self.bios_files[0])
@@ -165,7 +163,6 @@ class PopsManagerGUI:
 
         frame_dest = ttk.LabelFrame(self.tab_convert, text="3. 📂 Pasta de Destino")
         frame_dest.pack(fill="x", padx=10, pady=5)
-
         self.dest_label = tk.Label(frame_dest, text="Nenhuma pasta selecionada", bg=BG_COLOR, fg=TEXT_COLOR)
         self.dest_label.pack(side="left", padx=5, pady=5)
         ttk.Button(frame_dest, text="Selecionar Pasta", command=self.select_folder).pack(side="left", padx=5, pady=5)
@@ -192,37 +189,40 @@ class PopsManagerGUI:
         self.search_var = tk.StringVar()
         self.search_var.trace("w", lambda *args: self.refresh_manage_tab())
         tk.Entry(search_frame, textvariable=self.search_var, width=50).pack(side="left", padx=5)
+
         ttk.Button(search_frame, text="📊 Exportar CSV", command=self.export_csv).pack(side="right", padx=5)
         ttk.Button(search_frame, text="📂 Abrir Pasta", command=self.open_target_folder).pack(side="right", padx=5)
 
         self.canvas = tk.Canvas(self.tab_manage, bg=BG_COLOR, highlightthickness=0)
         self.scrollbar = tk.Scrollbar(self.tab_manage, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = tk.Frame(self.canvas, bg=BG_COLOR)
-
         self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
         self.canvas.pack(side="left", fill="both", expand=True, padx=5)
         self.scrollbar.pack(side="right", fill="y")
 
     def setup_advanced_tab(self):
         frame = ttk.Frame(self.tab_advanced)
         frame.pack(fill="both", expand=True, padx=10, pady=10)
+
         tk.Label(frame, text="🔄 Conversões Avançadas", font=("Arial", 12, "bold")).pack(pady=5)
 
+        # --- Arquivo de origem ---
         file_frame = ttk.LabelFrame(frame, text="1. Selecione o arquivo de origem")
         file_frame.pack(fill="x", pady=5)
         self.advanced_file_label = tk.Label(file_frame, text="Nenhum arquivo selecionado", bg=BG_COLOR, fg=TEXT_COLOR)
         self.advanced_file_label.pack(side="left", padx=5, pady=5)
         ttk.Button(file_frame, text="Selecionar Arquivo", command=self.select_advanced_file).pack(side="left", padx=5, pady=5)
 
+        # --- Formato de saída (com ZSO!) ---
         format_frame = ttk.LabelFrame(frame, text="2. Escolha o formato de saída")
         format_frame.pack(fill="x", pady=5)
         self.output_format = tk.StringVar(value="cue_bin")
         formats = [
             ("CUE + BIN", "cue_bin"),
             ("ISO", "iso"),
+            ("ZSO", "zso"),           # ✅ NOVA OPÇÃO
             ("GDI", "gdi"),
             ("CHD", "chd"),
             ("VCD", "vcd"),
@@ -230,14 +230,17 @@ class PopsManagerGUI:
         for text, value in formats:
             ttk.Radiobutton(format_frame, text=text, variable=self.output_format, value=value).pack(anchor="w", padx=20)
 
+        # --- Pasta de saída ---
         output_frame = ttk.LabelFrame(frame, text="3. Pasta de Saída")
         output_frame.pack(fill="x", pady=5)
         self.advanced_output_label = tk.Label(output_frame, text="Nenhuma pasta selecionada", bg=BG_COLOR, fg=TEXT_COLOR)
         self.advanced_output_label.pack(side="left", padx=5, pady=5)
         ttk.Button(output_frame, text="Selecionar Pasta", command=self.select_advanced_output).pack(side="left", padx=5, pady=5)
 
+        # --- Botão de iniciar ---
         ttk.Button(frame, text="▶️ Iniciar Conversão", command=self.start_advanced_conversion).pack(pady=10)
 
+        # --- Log ---
         self.advanced_log_text = tk.Text(frame, height=10, bg="#1b1b1b", fg=TEXT_COLOR)
         self.advanced_log_text.pack(fill="both", expand=True, pady=5)
         self.advanced_log_text.tag_config("error", foreground=ERROR_COLOR)
@@ -246,7 +249,9 @@ class PopsManagerGUI:
     def setup_console_tab(self):
         frame = ttk.Frame(self.tab_console)
         frame.pack(fill="both", expand=True, padx=10, pady=10)
+
         tk.Label(frame, text="⌨️ Console", font=("Arial", 10, "bold")).pack(anchor="w")
+
         self.console_input = tk.Entry(frame, font=("Consolas", 10))
         self.console_input.pack(fill="x", pady=5)
         self.console_input.bind("<Return>", self.execute_console_command)
@@ -258,12 +263,14 @@ class PopsManagerGUI:
     def execute_console_command(self, event=None):
         cmd = self.console_input.get().strip()
         self.console_output.insert("end", f">>> {cmd}\n")
+
         responses = {
             "help": "Comandos: help, clear, list, version",
             "clear": lambda: self.console_output.delete("1.0", "end"),
             "list": lambda: self.list_games_in_console(),
             "version": f"POPStation v{CURRENT_VERSION}"
         }
+
         if cmd in responses:
             if callable(responses[cmd]):
                 responses[cmd]()
@@ -271,6 +278,7 @@ class PopsManagerGUI:
                 self.console_output.insert("end", responses[cmd] + "\n")
         else:
             self.console_output.insert("end", "Comando não reconhecido.\n")
+
         self.console_input.delete(0, "end")
         self.console_output.see("end")
 
@@ -278,10 +286,12 @@ class PopsManagerGUI:
         if not self.target_dir:
             self.console_output.insert("end", "Nenhuma pasta selecionada.\n")
             return
+
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         if not os.path.exists(conf_file):
             self.console_output.insert("end", "Nenhum jogo encontrado.\n")
             return
+
         with open(conf_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if "=" in line:
@@ -300,6 +310,7 @@ class PopsManagerGUI:
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         full_message = f"[{timestamp}] {message}"
         print(full_message)
+
         if advanced:
             tag = "error" if "❌" in message else "success" if "✅" in message else ""
             self.advanced_log_text.insert(tk.END, full_message + "\n", tag)
@@ -308,9 +319,11 @@ class PopsManagerGUI:
             tag = "error" if "❌" in message or "Erro" in message else "success" if "✅" in message else "warning" if "⚠️" in message else ""
             self.log_text.insert(tk.END, full_message + "\n", tag)
             self.log_text.see(tk.END)
+
         ensure_dir("logs")
         with open(os.path.join("logs", "popstation.log"), "a", encoding="utf-8") as f:
             f.write(full_message + "\n")
+
         self.status_var.set(message[:50] + "..." if len(message) > 50 else message)
         self.root.update_idletasks()
 
@@ -320,7 +333,9 @@ class PopsManagerGUI:
         self.root.update_idletasks()
 
     def select_files(self):
-        files = filedialog.askopenfilenames(filetypes=[("Jogos PS1/CHD", "*.iso *.bin *.cue *.mdf *.ecm *.img *.chd *.gdi")])
+        files = filedialog.askopenfilenames(
+            filetypes=[("Jogos PS1/CHD", "*.iso *.bin *.cue *.mdf *.ecm *.img *.chd *.gdi *.zso")]  # ✅ ADICIONADO .ZSO
+        )
         if files:
             self.files.extend(files)
             self.update_file_listbox()
@@ -347,7 +362,10 @@ class PopsManagerGUI:
 
     def select_covers(self):
         for file_path in self.files:
-            cover_path = filedialog.askopenfilename(title=f"Capa para {os.path.basename(file_path)}", filetypes=[("Imagens", "*.png *.jpg *.jpeg *.bmp")])
+            cover_path = filedialog.askopenfilename(
+                title=f"Capa para {os.path.basename(file_path)}",
+                filetypes=[("Imagens", "*.png *.jpg *.jpeg *.bmp")]
+            )
             if cover_path:
                 game_name = os.path.splitext(os.path.basename(file_path))[0]
                 self.covers[game_name] = cover_path
@@ -355,7 +373,10 @@ class PopsManagerGUI:
 
     def select_logos(self):
         for file_path in self.files:
-            logo_path = filedialog.askopenfilename(title=f"Logo para {os.path.basename(file_path)}", filetypes=[("Imagens", "*.png *.jpg *.jpeg *.bmp")])
+            logo_path = filedialog.askopenfilename(
+                title=f"Logo para {os.path.basename(file_path)}",
+                filetypes=[("Imagens", "*.png *.jpg *.jpeg *.bmp")]
+            )
             if logo_path:
                 game_name = os.path.splitext(os.path.basename(file_path))[0]
                 self.logos[game_name] = logo_path
@@ -372,8 +393,8 @@ class PopsManagerGUI:
         if not os.path.exists(os.path.join(script_root, bios_selected)):
             messagebox.showerror("❌ Erro", f"BIOS não encontrado: {bios_selected}")
             return
-
         essential_files.append(bios_selected)
+
         missing = []
         for f in essential_files:
             if not os.path.exists(os.path.join(script_root, f)):
@@ -402,6 +423,7 @@ class PopsManagerGUI:
             game_name = os.path.splitext(os.path.basename(f))[0]
             cover_path = self.covers.get(game_name)
             logo_path = self.logos.get(game_name)
+
             if process_game(f, pops_dir, self.target_dir, cover_path, logo_path, self.log, self.update_progress):
                 success_count += 1
 
@@ -410,7 +432,8 @@ class PopsManagerGUI:
 
         try:
             winsound.PlaySound(os.path.join(script_root, "success.wav"), winsound.SND_ASYNC)
-        except: pass
+        except:
+            pass
 
         self.files = []
         self.covers = {}
@@ -446,7 +469,9 @@ class PopsManagerGUI:
                         continue
 
                     vcd_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
-                    valid_game = os.path.exists(vcd_path) or any(os.path.exists(os.path.join(pops_dir, f"{elf_name_no_ext}{ext}")) for ext in SUPPORTED_FORMATS)
+                    valid_game = os.path.exists(vcd_path) or any(
+                        os.path.exists(os.path.join(pops_dir, f"{elf_name_no_ext}{ext}")) for ext in SUPPORTED_FORMATS
+                    )
                     if not valid_game:
                         continue
 
@@ -462,6 +487,7 @@ class PopsManagerGUI:
                     games.append((game_key, elf_path, vcd_path, cover_path, logo_path, elf_name_no_ext))
 
         games.sort(key=lambda x: x[0].lower())
+
         search_text = self.search_var.get().lower()
         columns = 5
         idx = 0
@@ -471,7 +497,7 @@ class PopsManagerGUI:
                 continue
 
             frame = tk.Frame(self.scrollable_frame, bg=TILE_BG, padx=5, pady=5, relief="raised", bd=1)
-            frame.grid(row=idx//columns, column=idx%columns, padx=10, pady=10, sticky="n")
+            frame.grid(row=idx // columns, column=idx % columns, padx=10, pady=10, sticky="n")
             self.game_tiles[game_key] = frame
             idx += 1
 
@@ -501,7 +527,8 @@ class PopsManagerGUI:
                     lbl_logo = tk.Label(frame, image=photo, bg=TILE_BG)
                     lbl_logo.pack(pady=2)
                     ImageTooltip(lbl_logo, logo_path, PREVIEW_SIZE)
-                except: pass
+                except:
+                    pass
 
             tk.Label(frame, text=game_key, bg=TILE_BG, fg=TEXT_COLOR, wraplength=120, font=("Arial", 9, "bold")).pack()
             tk.Label(frame, text=os.path.basename(elf_path), bg=TILE_BG, fg=TEXT_COLOR, font=("Arial", 8)).pack()
@@ -515,7 +542,6 @@ class PopsManagerGUI:
             menu.add_separator()
             menu.add_command(label="💿 Converter para CUE+BIN", command=lambda g=game_key: self.convert_game_to_cue_bin(g))
             menu.add_command(label="📀 Converter para ISO", command=lambda g=game_key: self.convert_game_to_iso(g))
-
             frame.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
             for child in frame.winfo_children():
                 child.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
@@ -546,6 +572,7 @@ class PopsManagerGUI:
     def delete_game(self, game_key):
         if not messagebox.askyesno("⚠️ Confirmação", f"Apagar '{game_key}'?"):
             return
+
         if not self.target_dir:
             return
 
@@ -560,18 +587,23 @@ class PopsManagerGUI:
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         save_folder = os.path.join(pops_dir, elf_name_no_ext)
 
-        if os.path.exists(save_folder): shutil.rmtree(save_folder)
+        if os.path.exists(save_folder):
+            shutil.rmtree(save_folder)
+
         elf_path = os.path.join(self.target_dir, f"XX.{elf_name_no_ext}.ELF")
-        if os.path.exists(elf_path): os.remove(elf_path)
+        if os.path.exists(elf_path):
+            os.remove(elf_path)
 
         for ext in SUPPORTED_FORMATS + [".VCD"]:
             path = os.path.join(pops_dir, f"{elf_name_no_ext}{ext}")
-            if os.path.exists(path): os.remove(path)
+            if os.path.exists(path):
+                os.remove(path)
 
         for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
             for prefix in [".ELF_COV", ".ELF_LGO"]:
                 file_path = os.path.join(art_dir, f"XX.{elf_name_no_ext}{prefix}{ext}")
-                if os.path.exists(file_path): os.remove(file_path)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
 
         if os.path.exists(conf_file):
             with open(conf_file, 'r', encoding='utf-8') as f:
@@ -586,7 +618,10 @@ class PopsManagerGUI:
         self.refresh_manage_tab()
 
     def update_cover(self, game_key):
-        cover_path = filedialog.askopenfilename(title=f"Capa para {game_key}", filetypes=[("Imagens", "*.png *.jpg *.jpeg *.bmp")])
+        cover_path = filedialog.askopenfilename(
+            title=f"Capa para {game_key}",
+            filetypes=[("Imagens", "*.png *.jpg *.jpeg *.bmp")]
+        )
         if not cover_path or not self.target_dir:
             return
 
@@ -601,7 +636,10 @@ class PopsManagerGUI:
         self.refresh_manage_tab()
 
     def update_logo(self, game_key):
-        logo_path = filedialog.askopenfilename(title=f"Logo para {game_key}", filetypes=[("Imagens", "*.png *.jpg *.jpeg *.bmp")])
+        logo_path = filedialog.askopenfilename(
+            title=f"Logo para {game_key}",
+            filetypes=[("Imagens", "*.png *.jpg *.jpeg *.bmp")]
+        )
         if not logo_path or not self.target_dir:
             return
 
@@ -721,6 +759,7 @@ class PopsManagerGUI:
                     games.append({"name": game_key, "elf": elf_name})
 
         html = f"""<!DOCTYPE html><html><head><title>Jogos POPStarter</title><meta charset="UTF-8"><style>body{{font-family:Arial,sans-serif;background:#222;color:#eee;margin:40px;}}h1{{color:#4a90e2;}}table{{width:100%;border-collapse:collapse;margin-top:20px;}}th,td{{padding:12px;border:1px solid #444;text-align:left;}}th{{background:#333;}}tr:nth-child(even){{background:#2a2a2a;}}</style></head><body><h1>🎮 Lista de Jogos</h1><p>Gerado em: {datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")}</p><table><tr><th>Nome do Jogo</th><th>Arquivo ELF</th></tr>"""
+
         for game in games:
             html += f"<tr><td>{game['name']}</td><td>{game['elf']}</td></tr>"
         html += "</table></body></html>"
@@ -754,10 +793,8 @@ class PopsManagerGUI:
                     elf_name = os.path.basename(elf.replace("mass:/", ""))
                     elf_path = os.path.join(self.target_dir, elf_name)
                     elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
-
                     if not os.path.exists(elf_path):
                         self.log(f"❌ ELF ausente: {elf_name}", "error")
-
                     vcd_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
                     if not os.path.exists(vcd_path):
                         self.log(f"⚠️ VCD ausente: {elf_name_no_ext}", "warning")
@@ -831,7 +868,9 @@ class PopsManagerGUI:
         self.refresh_manage_tab()
 
     def select_advanced_file(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Todos formatos suportados", "*.chd *.cue *.bin *.iso *.vcd *.gdi")])
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Todos formatos suportados", "*.chd *.cue *.bin *.iso *.vcd *.gdi *.zso")]  # ✅ ADICIONADO .ZSO
+        )
         if file_path:
             self.advanced_files = [file_path]
             self.advanced_file_label.config(text=f"Arquivo: {os.path.basename(file_path)}")
@@ -844,7 +883,7 @@ class PopsManagerGUI:
             self.advanced_output_label.config(text=f"Pasta: {folder}")
             self.log(f"📁 Pasta de saída selecionada: {folder}", advanced=True)
 
-    # ✅ ✅ ✅ MÉTODO ATUALIZADO: Conversão Avançada VCD → CUE+BIN e DELETA o VCD temporário
+    # ✅ ✅ ✅ MÉTODO ATUALIZADO: Conversão Avançada com suporte a ISO ↔ ZSO
     def start_advanced_conversion(self):
         if not hasattr(self, 'advanced_files') or not self.advanced_files:
             messagebox.showwarning("Aviso", "Selecione um arquivo de origem!")
@@ -863,6 +902,7 @@ class PopsManagerGUI:
         cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
         pops2cue_path = os.path.join(script_root, POPS2CUE_EXE)
         vcd2iso_path = os.path.join(script_root, VCD2ISO_EXE)
+        ziso_path = os.path.join(script_root, ZISO_EXE)  # ✅ NOVA CONSTANTE
 
         try:
             # ✅ CONVERSÃO PARA CHD
@@ -969,6 +1009,30 @@ class PopsManagerGUI:
                 output_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
                 if convert_vcd_to_iso(input_file, output_iso, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
+
+            # ✅ ✅ ✅ ISO → ZSO
+            elif input_ext == ".iso" and output_format == "zso":
+                if not os.path.exists(ziso_path):
+                    self.log(f"❌ {ZISO_EXE} não encontrado! Certifique-se de que está na pasta do script.", "error", advanced=True)
+                    return
+                output_zso = os.path.join(self.advanced_output_folder, f"{base_name}.zso")
+                self.log(f"▶️ Convertendo ISO → ZSO: {os.path.basename(input_file)}", advanced=True)
+                if convert_iso_to_zso(input_file, output_zso, lambda msg: self.log(msg, advanced=True)):
+                    self.log(f"✅ ZSO salvo: {output_zso}", "success", advanced=True)
+                else:
+                    self.log("❌ Falha na conversão ISO → ZSO.", "error", advanced=True)
+
+            # ✅ ✅ ✅ ZSO → ISO
+            elif input_ext == ".zso" and output_format == "iso":
+                if not os.path.exists(ziso_path):
+                    self.log(f"❌ {ZISO_EXE} não encontrado! Certifique-se de que está na pasta do script.", "error", advanced=True)
+                    return
+                output_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
+                self.log(f"▶️ Convertendo ZSO → ISO: {os.path.basename(input_file)}", advanced=True)
+                if convert_zso_to_iso(input_file, output_iso, lambda msg: self.log(msg, advanced=True)):
+                    self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
+                else:
+                    self.log("❌ Falha na conversão ZSO → ISO.", "error", advanced=True)
 
             else:
                 self.log("❌ Conversão não suportada para esta combinação.", "error", advanced=True)
