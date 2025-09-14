@@ -34,16 +34,3 @@ Organize, converta e gerencie sua biblioteca de jogos <b>PS1 no PlayStation 2</b
 ---
 
 ## 🚀 Como Usar
-```bash
-# 1. Clone ou baixe o repositório
-git clone [https://github.com/seuusuario/POPStation.git](https://github.com/TonyLimaPHB/PopCraft)
-cd POPStation
-
-# 2. Coloque os arquivos necessários na pasta:
-#    - chdman.exe
-#    - BIOS.BIN
-#    - POPS.ELF
-
-# 3. Execute o programa
-python POPStation.py
-# ou use a versão compilada .exe

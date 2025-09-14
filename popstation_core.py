@@ -297,26 +297,80 @@ def convert_chd_to_gdi(chd_path, output_gdi, log_callback=None):
         if log_callback: log_callback(f"❌ Erro: {e}")
         return False
 
+# ✅ ✅ ✅ CORREÇÃO CRÍTICA: CHD → ISO DIRETO (SEM CUE TEMPORÁRIA)
 def convert_chd_to_iso_only(chd_path, output_iso, log_callback=None):
     script_root = get_script_root()
     chdman_path = os.path.join(script_root, CHDMAN_EXE)
     if not os.path.exists(chdman_path):
         if log_callback: log_callback(f"❌ {CHDMAN_EXE} não encontrado!")
         return False
-    temp_cue = os.path.splitext(output_iso)[0] + ".cue"
-    comando = [chdman_path, "extractcd", "-i", chd_path, "-o", temp_cue, "-ob", output_iso]
+
+    # ✅ Obter nome base sem extensão do arquivo de saída
+    base_name = os.path.splitext(output_iso)[0]
+    
+    # ✅ Caminhos temporários dentro do diretório do CHD (evita problemas com caminhos longos/espacos)
+    chd_dir = os.path.dirname(chd_path)
+    temp_cue = os.path.join(chd_dir, f"{base_name}.cue")
+    temp_bin = os.path.join(chd_dir, f"{base_name}.bin")
+
+    # ✅ Comando correto: extrai CUE + BIN (não tenta gerar ISO diretamente)
+    comando = [chdman_path, "extractcd", "-i", chd_path, "-o", temp_cue, "-ob", temp_bin]
+
     try:
-        if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(chd_path)} → ISO...")
-        result = subprocess.run(comando, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        if log_callback: 
+            log_callback(f"▶️  Convertendo {os.path.basename(chd_path)} → ISO...")
+
+        result = subprocess.run(
+            comando,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace'
+        )
+
         if result.returncode != 0:
-            if log_callback: log_callback(f"❌ Falha: {result.stderr}")
+            if log_callback:
+                log_callback(f"❌ Falha na extração: {result.stderr.strip()}")
             return False
+
+        # ✅ Verificar se o .bin foi gerado e tem tamanho real
+        if not os.path.exists(temp_bin) or os.path.getsize(temp_bin) == 0:
+            if log_callback:
+                log_callback(f"❌ Arquivo BIN não gerado ou vazio: {temp_bin}")
+            return False
+
+        # ✅ LOG INTERMEDIÁRIO: Mostrar que o BIN foi gerado com sucesso
+        size_mb = os.path.getsize(temp_bin) / (1024 * 1024)
+        if log_callback:
+            log_callback(f"   ✅ Extraído: {os.path.basename(temp_bin)} ({size_mb:.1f} MB)")
+
+        # ✅ RENOMEAR O .BIN PARA .ISO (exatamente o que o POPStarter espera!)
+        if log_callback: 
+            log_callback(f"   🔄 Renomeando {os.path.basename(temp_bin)} → {os.path.basename(output_iso)}...")
+        shutil.move(temp_bin, output_iso)
+
+        # ✅ APAGAR O ARQUIVO .CUE TEMPORÁRIO (não é necessário no destino final)
         if os.path.exists(temp_cue):
             os.remove(temp_cue)
-        if log_callback: log_callback(f"✅ ISO criado: {os.path.basename(output_iso)}")
+            if log_callback: 
+                log_callback(f"   🗑️  Limpeza concluída: {os.path.basename(temp_cue)} removido")
+
+        if log_callback: 
+            log_callback(f"🎉 ISO criado com sucesso: {os.path.basename(output_iso)}")
+
         return True
+
     except Exception as e:
-        if log_callback: log_callback(f"❌ Erro: {e}")
+        if log_callback: 
+            log_callback(f"❌ Erro inesperado: {e}")
+        # Tentar limpar arquivos temporários em caso de erro
+        try:
+            if os.path.exists(temp_cue):
+                os.remove(temp_cue)
+            if os.path.exists(temp_bin):
+                os.remove(temp_bin)
+        except:
+            pass
         return False
 
 # ✅ ✅ ✅ NOVAS FUNÇÕES: ISO ↔ ZSO COM AMBIENTE ISOLADO E LIMPEZA AUTOMÁTICA
@@ -324,51 +378,41 @@ def convert_iso_to_zso(iso_path, output_zso, log_callback=None):
     """Converte ISO → ZSO em ambiente isolado: copia ziso.exe e usa pasta temporária dentro da pasta do jogo."""
     script_root = get_script_root()
     ziso_exe = os.path.join(script_root, ZISO_EXE)
-
     if not os.path.exists(ziso_exe):
         if log_callback:
             log_callback(f"❌ {ZISO_EXE} não encontrado na pasta do script.")
         return False
-
     if not os.path.exists(iso_path):
         if log_callback:
             log_callback(f"❌ Arquivo ISO não encontrado: {iso_path}")
         return False
-
     # ✅ GARANTIR QUE A PASTA DE SAÍDA EXISTA (NOVA LINHA)
     ensure_dir(os.path.dirname(output_zso))
-
     # ✅ Obter pasta do arquivo ISO (não a raiz do script!)
     iso_dir = os.path.dirname(iso_path)
     iso_filename = os.path.basename(iso_path)
     iso_name_no_ext = os.path.splitext(iso_filename)[0]
-
     # ✅ Criar pastas temporárias dentro da pasta do jogo
     iso_temp_dir = os.path.join(iso_dir, "ISO")
     zso_temp_dir = os.path.join(iso_dir, "ZSO")
     ensure_dir(iso_temp_dir)
     ensure_dir(zso_temp_dir)
-
     # ✅ Caminhos temporários
     temp_iso_path = os.path.join(iso_temp_dir, iso_filename)
     temp_ziso_exe = os.path.join(iso_temp_dir, ZISO_EXE)
     temp_zso_path = os.path.join(zso_temp_dir, f"{iso_name_no_ext}.zso")
-
     try:
         # ✅ Passo 1: MOVER o arquivo ISO para a pasta ISO/ (NÃO COPIAR!)
         if log_callback:
             log_callback(f"📁 Movendo ISO para ambiente temporário: {iso_filename}")
         shutil.move(iso_path, temp_iso_path)  # ✅ MOVIMENTAÇÃO REAL — ORIGINAL AGORA ESTÁ AQUI
-
         # ✅ Passo 2: Copiar ziso.exe para a pasta ISO/
         if log_callback:
             log_callback(f"🔧 Copiando {ZISO_EXE} para ambiente temporário...")
         shutil.copy2(ziso_exe, temp_ziso_exe)
-
         # ✅ Passo 3: Executar conversão usando -c9 (sintaxe correta para a maioria dos ziso.exe)
         if log_callback:
             log_callback(f"▶️ Convertendo {iso_filename} → {iso_name_no_ext}.zso (ambiente isolado)...")
-        
         # ✅ ✅ ✅ CORREÇÃO CRÍTICA: Usa -c9, NÃO -c -l 9
         comando = [temp_ziso_exe, "-c9", temp_iso_path, temp_zso_path]
         result = subprocess.run(
@@ -379,54 +423,42 @@ def convert_iso_to_zso(iso_path, output_zso, log_callback=None):
             errors='replace',
             cwd=iso_temp_dir  # ✅ Executa dentro da pasta ISO/
         )
-
         if result.returncode != 0:
             if log_callback:
                 log_callback(f"❌ Falha na conversão ISO → ZSO: {result.stderr.strip()}")
             return False
-
         # ✅ Passo 4: Verificar se o ZSO foi gerado
         if not os.path.exists(temp_zso_path):
             if log_callback:
                 log_callback(f"❌ Arquivo ZSO não foi gerado após conversão!")
             return False
-
         # ✅ Passo 5: Mover o ZSO resultante para a pasta de saída escolhida
         if log_callback:
             log_callback(f"📤 Movendo ZSO resultante para destino final: {os.path.basename(output_zso)}")
         shutil.move(temp_zso_path, output_zso)
-
         # ✅ PASSO 6: RESTAURAR O ARQUIVO ORIGINAL (ISO) PARA ONDE ESTAVA — ANTES DA LIMPEZA!
         if log_callback:
             log_callback(f"🔄 Restaurando ISO original para local: {iso_path}")
         shutil.move(temp_iso_path, iso_path)  # ✅ AGORA O ORIGINAL VOLTA!
-
         # ✅ Passo 7: Limpeza: apagar pastas temporárias e ziso.exe
         if log_callback:
             log_callback(f"🧹 Limpando ambiente temporário...")
-
         # Remove o ziso.exe copiado
         if os.path.exists(temp_ziso_exe):
             os.remove(temp_ziso_exe)
-
         # Remove a pasta ISO (vazia agora)
         if os.path.exists(iso_temp_dir) and len(os.listdir(iso_temp_dir)) == 0:
             os.rmdir(iso_temp_dir)
-
         # Remove a pasta ZSO (vazia agora)
         if os.path.exists(zso_temp_dir) and len(os.listdir(zso_temp_dir)) == 0:
             os.rmdir(zso_temp_dir)
-
         if log_callback:
             log_callback(f"✅ Conversão ISO → ZSO concluída com sucesso!")
             log_callback(f"   Arquivo final: {output_zso}")
-
         return True
-
     except Exception as e:
         if log_callback:
             log_callback(f"❌ Erro durante conversão ISO → ZSO: {e}")
-
         # ✅ RESTAURA O ARQUIVO ORIGINAL EM CASO DE ERRO
         try:
             if os.path.exists(temp_iso_path) and not os.path.exists(iso_path):
@@ -436,7 +468,6 @@ def convert_iso_to_zso(iso_path, output_zso, log_callback=None):
         except Exception as restore_error:
             if log_callback:
                 log_callback(f"⚠️ Falha ao restaurar ISO original: {restore_error}")
-
         # ✅ LIMPEZA FINAL — APENAS AS PASTAS TEMPORÁRIAS
         try:
             if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe):
@@ -454,51 +485,41 @@ def convert_zso_to_iso(zso_path, output_iso, log_callback=None):
     """Converte ZSO → ISO em ambiente isolado usando ziso.exe"""
     script_root = get_script_root()
     ziso_exe = os.path.join(script_root, ZISO_EXE)
-
     if not os.path.exists(ziso_exe):
         if log_callback:
             log_callback(f"❌ {ZISO_EXE} não encontrado na pasta do script.")
         return False
-
     if not os.path.exists(zso_path):
         if log_callback:
             log_callback(f"❌ Arquivo ZSO não encontrado: {zso_path}")
         return False
-
     # ✅ GARANTIR QUE A PASTA DE SAÍDA EXISTA (NOVA LINHA)
     ensure_dir(os.path.dirname(output_iso))
-
     # Obter pasta do arquivo ZSO
     zso_dir = os.path.dirname(zso_path)
     zso_filename = os.path.basename(zso_path)
     zso_name_no_ext = os.path.splitext(zso_filename)[0]
-
     # Criar pastas temporárias dentro da pasta do jogo
     zso_temp_dir = os.path.join(zso_dir, "ZSO")
     iso_temp_dir = os.path.join(zso_dir, "ISO")
     ensure_dir(zso_temp_dir)
     ensure_dir(iso_temp_dir)
-
     # Caminhos temporários
     temp_zso_path = os.path.join(zso_temp_dir, zso_filename)
     temp_ziso_exe = os.path.join(zso_temp_dir, ZISO_EXE)
     temp_iso_path = os.path.join(iso_temp_dir, f"{zso_name_no_ext}.iso")
-
     try:
         # ✅ Passo 1: MOVER o arquivo ZSO para a pasta ZSO/ (NÃO COPIAR!)
         if log_callback:
             log_callback(f"📁 Movendo ZSO para ambiente temporário: {zso_filename}")
         shutil.move(zso_path, temp_zso_path)  # ✅ MOVIMENTAÇÃO REAL — ORIGINAL AGORA ESTÁ AQUI
-
         # ✅ Passo 2: Copiar ziso.exe para a pasta ZSO/
         if log_callback:
             log_callback(f"🔧 Copiando {ZISO_EXE} para ambiente temporário...")
         shutil.copy2(ziso_exe, temp_ziso_exe)
-
         # ✅ Passo 3: Executar conversão usando -c 0 (extração)
         if log_callback:
             log_callback(f"▶️ Convertendo {zso_filename} → {zso_name_no_ext}.iso (ambiente isolado)...")
-        
         # Usa -c 0 para descompactar, não -x
         comando = [temp_ziso_exe, "-c", "0", temp_zso_path, temp_iso_path]
         result = subprocess.run(
@@ -509,56 +530,44 @@ def convert_zso_to_iso(zso_path, output_iso, log_callback=None):
             errors='replace',
             cwd=zso_temp_dir  # Executa dentro da pasta ZSO/
         )
-
         # Captura de erro detalhada
         if result.returncode != 0:
             if log_callback:
                 log_callback(f"❌ Falha na conversão ZSO → ISO: {result.stderr.strip()}")
                 log_callback(f"📝 Detalhes do erro: {result.stdout.strip()}")
             return False
-
         # Passo 4: Verificar se o ISO foi gerado
         if not os.path.exists(temp_iso_path):
             if log_callback:
                 log_callback(f"❌ Arquivo ISO não foi gerado após conversão!")
             return False
-
         # ✅ Passo 5: Mover o ISO resultante para a pasta de saída escolhida
         if log_callback:
             log_callback(f"📤 Movendo ISO resultante para destino final: {os.path.basename(output_iso)}")
         shutil.move(temp_iso_path, output_iso)
-
         # ✅ PASSO 6: RESTAURAR O ARQUIVO ORIGINAL (ZSO) PARA ONDE ESTAVA — ANTES DA LIMPEZA!
         if log_callback:
             log_callback(f"🔄 Restaurando ZSO original para local: {zso_path}")
         shutil.move(temp_zso_path, zso_path)  # ✅ AGORA O ORIGINAL VOLTA!
-
         # ✅ Passo 7: Limpeza: apagar pastas temporárias e ziso.exe
         if log_callback:
             log_callback(f"🧹 Limpando ambiente temporário...")
-
         # Remove o ziso.exe copiado
         if os.path.exists(temp_ziso_exe):
             os.remove(temp_ziso_exe)
-
         # Remove a pasta ZSO (vazia agora)
         if os.path.exists(zso_temp_dir) and len(os.listdir(zso_temp_dir)) == 0:
             os.rmdir(zso_temp_dir)
-
         # Remove a pasta ISO (vazia agora)
         if os.path.exists(iso_temp_dir) and len(os.listdir(iso_temp_dir)) == 0:
             os.rmdir(iso_temp_dir)
-
         if log_callback:
             log_callback(f"✅ Conversão ZSO → ISO concluída com sucesso!")
             log_callback(f"   Arquivo final: {output_iso}")
-
         return True
-
     except Exception as e:
         if log_callback:
             log_callback(f"❌ Erro durante conversão ZSO → ISO: {e}")
-
         # ✅ RESTAURA O ARQUIVO ORIGINAL EM CASO DE ERRO
         try:
             if os.path.exists(temp_zso_path) and not os.path.exists(zso_path):
@@ -568,7 +577,6 @@ def convert_zso_to_iso(zso_path, output_iso, log_callback=None):
         except Exception as restore_error:
             if log_callback:
                 log_callback(f"⚠️ Falha ao restaurar ZSO original: {restore_error}")
-
         # ✅ LIMPEZA FINAL — APENAS AS PASTAS TEMPORÁRIAS
         try:
             if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe):
@@ -580,6 +588,7 @@ def convert_zso_to_iso(zso_path, output_iso, log_callback=None):
         except:
             pass
         return False
+
 
 # ---------------- Funções de Backup e Configuração ----------------
 def backup_conf_file(target_dir):
@@ -642,6 +651,7 @@ def get_elf_name_from_game_key(game_key, target_dir):
                     return os.path.splitext(elf_name)[0]
     return None
 
+# ✅ ✅ ✅ FUNÇÃO PRINCIPAL REVISADA: process_game com suporte perfeito a .cue/.bin na aba principal
 def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=None, log_callback=None, progress_callback=None):
     original_name = os.path.basename(file_path)
     game_name, ext = os.path.splitext(original_name)
@@ -656,6 +666,7 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
     conf_name = re.sub(r"\[.*?\]", "", game_name).strip()
     temp_dir = None
 
+    # ✅ [MUDANÇA] - LÓGICA REVISADA PARA ABA "CONVERSÃO DE JOGOS" - SEM AFETAR A ABAS AVANÇADAS
     if ext == ".chd":
         cue_path, bin_path, temp_dir = convert_chd_to_iso_temp(file_path, log_callback, progress_callback)
         if not cue_path or not bin_path:
@@ -676,9 +687,48 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
             if log_callback: log_callback(f"❌ Falha ao converter CUE para VCD: {e}")
             if temp_dir: shutil.rmtree(temp_dir, ignore_errors=True)
             return False
-        file_path = None
+        file_path = None  # Evita cópia duplicada
+
+    elif ext == ".cue":
+        # Verifica se o .bin existe
+        bin_path = os.path.splitext(file_path)[0] + ".bin"
+        if not os.path.exists(bin_path):
+            if log_callback:
+                log_callback(f"❌ Arquivo BIN associado não encontrado: {bin_path}")
+            return False
+        # Usa a mesma lógica da aba avançada: converte CUE+BIN → VCD com cue2pops.exe
+        script_root = get_script_root()
+        cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
+        if not os.path.exists(cue2pops_path):
+            if log_callback: log_callback(f"❌ {CUE2POPS_EXE} não encontrado!")
+            return False
+        vcd_output = os.path.join(pops_dir, vcd_name)
+        if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(file_path)} + {os.path.basename(bin_path)} para VCD...")
+        if not convert_cue_to_vcd(file_path, vcd_output, log_callback):
+            return False
+
+    elif ext == ".bin":
+        # Verifica se o .cue existe
+        cue_path = os.path.splitext(file_path)[0] + ".cue"
+        if not os.path.exists(cue_path):
+            if log_callback:
+                log_callback(f"❌ Arquivo CUE associado não encontrado: {cue_path}")
+            return False
+        # Usa a mesma lógica da aba avançada: converte CUE+BIN → VCD com cue2pops.exe
+        script_root = get_script_root()
+        cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
+        if not os.path.exists(cue2pops_path):
+            if log_callback: log_callback(f"❌ {CUE2POPS_EXE} não encontrado!")
+            return False
+        vcd_output = os.path.join(pops_dir, vcd_name)
+        if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(cue_path)} + {os.path.basename(file_path)} para VCD...")
+        if not convert_cue_to_vcd(cue_path, vcd_output, log_callback):
+            return False
+
     else:
+        # Para todos os outros formatos (.iso, .img, etc.) → copia diretamente como VCD
         vcd_path = os.path.join(pops_dir, vcd_name)
+        if log_callback: log_callback(f"📦 Copiando arquivo original ({ext}) como VCD...")
         convert_to_vcd(file_path, vcd_path, log_callback)
 
     save_folder = os.path.join(pops_dir, save_folder_name)
