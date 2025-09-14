@@ -1,0 +1,17 @@
+{
+  "ignore_folders": [
+    ".idea .git .venv __pycache__ _STOP"
+  ],
+  "ignore_files": [
+    "requirements.txt SnapRestore.pyw estrutura.txt generate_project_structure.py SnapRestore 📅✅🧠.pyw"
+  ],
+  "code_extensions": [
+    ".py .md .txt .json .yaml .yml .css .html"
+  ],
+  "auto_update_check": true,
+  "cloud_provider": null,
+  "aws_bucket": "",
+  "aws_region": "us-east-1",
+  "aws_access_key": "",
+  "aws_secret_key": ""
+}
