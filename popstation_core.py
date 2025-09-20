@@ -548,7 +548,86 @@ def get_elf_name_from_game_key(game_key, target_dir):
                     return os.path.splitext(elf_name)[0]
     return None
 
-# ✅ ✅ ✅ FUNÇÃO PRINCIPAL REVISADA: process_game com suporte perfeito a .cue/.bin
+# [NOVO] - Função auxiliar para buscar e copiar descrição .cfg
+def copy_description_cfg(game_code, script_root, target_dir, log_callback=None):
+    """
+    Procura por um arquivo .cfg com nome igual ao game_code dentro da pasta _description_psx.
+    Aceita tanto '[SLUS_008.24]' quanto 'SLUS_008.24'.
+    Cria a pasta 'CFG' na RAIZ do target_dir (ex: K:/CFG/) se não existir.
+    COPIA o arquivo .cfg para lá (NÃO MOVE — mantém o original em _description_psx).
+    Retorna True se encontrou e copiou, False caso contrário.
+    """
+    desc_dir = os.path.join(script_root, "_description_psx")
+    
+    # Verifica se a pasta _description_psx existe
+    if not os.path.exists(desc_dir):
+        if log_callback:
+            log_callback(f"❌ Pasta '_description_psx' NÃO ENCONTRADA em: {desc_dir}")
+        return False
+
+    # Normaliza o código do jogo: remove colchetes se houver
+    clean_code = game_code.strip()
+    if clean_code.startswith('[') and clean_code.endswith(']'):
+        clean_code = clean_code[1:-1].strip()
+
+    # Nome esperado do arquivo .cfg
+    cfg_filename = f"{clean_code}.cfg"
+    cfg_path = os.path.join(desc_dir, cfg_filename)
+
+    # Verifica se o arquivo .cfg existe
+    if not os.path.isfile(cfg_path):
+        if log_callback:
+            log_callback(f"ℹ️ Arquivo '{cfg_filename}' não encontrado em '_description_psx'.")
+        return False
+
+    # ✅ PASSO CRÍTICO: Define a pasta CFG na RAIZ do diretório de saída
+    cfg_target_dir = os.path.join(target_dir, "CFG")  # ← ISSO É K:/CFG!
+    ensure_dir(cfg_target_dir)  # ✅ CRIA SE NÃO EXISTIR
+
+    if log_callback:
+        log_callback(f"✅ Pasta 'CFG' criada/verificada em: {cfg_target_dir}")
+
+    dest_path = os.path.join(cfg_target_dir, cfg_filename)
+
+    # Verifica se já existe no destino (comparação de conteúdo)
+    if os.path.exists(dest_path):
+        if os.path.getsize(cfg_path) == os.path.getsize(dest_path):
+            with open(cfg_path, 'rb') as f1, open(dest_path, 'rb') as f2:
+                if f1.read() == f2.read():
+                    if log_callback:
+                        log_callback(f"✅ Descrição já existe e é idêntica: {cfg_filename}")
+                    return True
+        try:
+            os.remove(dest_path)
+            if log_callback:
+                log_callback(f"⚠️ Sobrescrevendo arquivo existente: {cfg_filename}")
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ Falha ao sobrescrever {cfg_filename}: {e}")
+            return False
+
+    # ✅ COPIA o arquivo (NÃO MOVE!) — O ORIGINAL PERMANECE EM _description_psx/
+    try:
+        shutil.copy2(cfg_path, dest_path)
+        if log_callback:
+            log_callback(f"📄 DESCRICAO COPIADA COM SUCESSO: {cfg_filename} → {dest_path}")
+        return True
+
+    except PermissionError:
+        if log_callback:
+            log_callback(f"❌ Permissão negada ao copiar {cfg_filename}. Verifique permissões da pasta.")
+        return False
+    except FileNotFoundError:
+        if log_callback:
+            log_callback(f"❌ Arquivo fonte não encontrado após validação: {cfg_path}")
+        return False
+    except Exception as e:
+        if log_callback:
+            log_callback(f"❌ Erro inesperado ao copiar {cfg_filename}: {e}")
+        return False
+
+
+# ✅ ✅ ✅ FUNÇÃO PRINCIPAL REVISADA: process_game com suporte perfeito a .cue/.bin + DESCRIÇÕES
 def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=None, log_callback=None, progress_callback=None):
     original_name = os.path.basename(file_path)
     game_name, ext = os.path.splitext(original_name)
@@ -623,15 +702,24 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
     copy_file(SLOT1_VMC_NAME, os.path.join(save_folder, SLOT1_VMC_NAME))
 
     script_root = get_script_root()
+
+    # [MUDANÇA] - Aplicar fix de _pops_fix (já existente)
     fix_src = os.path.join(script_root, "_pops_fix", elf_name_no_ext)
     if os.path.exists(fix_src):
         if log_callback: log_callback(f"🔧 Aplicando fix para {elf_name_no_ext}...")
         copy_tree(fix_src, save_folder, log_callback)
 
+    # [NOVO] - Aplicar descrição .cfg de _description_psx
+    # Usa o mesmo base_name (código do jogo) para procurar SLUS_XXX.XX.cfg
+        # [CORREÇÃO FINAL] - Copia .cfg para a RAIZ da pasta de saída (mesmo nível da pasta POPS)
+    if code_in_brackets:
+        copy_description_cfg(code_in_brackets, script_root, target_dir, log_callback)
+    else:
+        copy_description_cfg(base_name, script_root, target_dir, log_callback)
+
     outside_elf = os.path.join(target_dir, elf_name)
     copy_file(POPS_ELF_NAME, outside_elf)
     update_conf_apps(conf_name, target_dir, elf_name)
-
     art_dir = os.path.join(target_dir, ART_DIR_NAME)
     if cover_path:
         save_cover(elf_name_no_ext, art_dir, cover_path)

@@ -1,3 +1,5 @@
+# Título: Estavel 3.8
+# Descrição: Estavel.
 ├── PopCraft/
 └── README.md
 ```python
@@ -61,6 +63,7 @@ if __name__ == "__main__":
     root = TkinterDnD.Tk()
     app = PopsManagerGUI(root)
     root.mainloop()
+
 ```
 └── popstation_core.py
 ```python
@@ -76,19 +79,18 @@ import datetime
 import sys
 
 # ---------------- Configurações ----------------
-SUPPORTED_FORMATS = ['.iso', '.bin', '.cue', '.mdf', '.ecm', '.img', '.chd', '.gdi', '.zso']  # ✅ ADICIONADO .ZSO
+SUPPORTED_FORMATS = ['.iso', '.bin', '.cue', '.mdf', '.ecm', '.img', '.chd', '.gdi', '.zso']
 POPS_ELF_NAME = "POPS.ELF"
 BIOS_FILE_NAME = "BIOS.BIN"
 SLOT0_VMC_NAME = "SLOT0.VMC"
 SLOT1_VMC_NAME = "SLOT1.VMC"
 POPS_DIR_NAME = "POPS"
 ART_DIR_NAME = "ART"
-
 CHDMAN_EXE = "chdman.exe"
 CUE2POPS_EXE = "cue2pops.exe"
 POPS2CUE_EXE = "POPS2CUE.EXE"
 VCD2ISO_EXE = "vcd2iso.exe"
-ZISO_EXE = "ziso.exe"  # ✅ NOVA CONSTANTE PARA CONVERSÃO ZSO
+ZISO_EXE = "ziso.exe"
 
 # ---------------- Funções utilitárias ----------------
 def get_script_root():
@@ -107,6 +109,7 @@ def copy_file(src, dest):
         shutil.copy2(src, dest)
 
 def copy_tree(src, dst, log_callback=None):
+    """Copia recursivamente uma pasta, mantendo estrutura e sobrescrevendo apenas se necessário."""
     if not os.path.exists(src):
         if log_callback: log_callback(f"⚠️ Pasta de origem não encontrada: {src}")
         return False
@@ -116,8 +119,19 @@ def copy_tree(src, dst, log_callback=None):
             s = os.path.join(src, item)
             d = os.path.join(dst, item)
             if os.path.isdir(s):
-                shutil.copytree(s, d, dirs_exist_ok=True)
+                if os.path.exists(d):
+                    # Se pasta existe, entra recursivamente (merge)
+                    copy_tree(s, d, log_callback)
+                else:
+                    shutil.copytree(s, d, dirs_exist_ok=False)
             else:
+                # Se arquivo existe, compara conteúdo antes de sobrescrever
+                if os.path.exists(d):
+                    if os.path.getsize(s) == os.path.getsize(d):
+                        with open(s, 'rb') as f1, open(d, 'rb') as f2:
+                            if f1.read() == f2.read():
+                                if log_callback: log_callback(f"✅ Ignorado (igual): {item}", "info")
+                                continue
                 shutil.copy2(s, d)
         if log_callback: log_callback(f"✅ Copiado: {src} → {dst}")
         return True
@@ -126,6 +140,7 @@ def copy_tree(src, dst, log_callback=None):
         return False
 
 def get_file_hash(file_path):
+    """Retorna hash SHA256 dos primeiros 8 caracteres do arquivo."""
     if not os.path.exists(file_path):
         return None
     hasher = hashlib.sha256()
@@ -139,12 +154,8 @@ def get_file_hash(file_path):
 
 # ---------------- Conversões Avançadas ----------------
 def convert_chd_to_iso_temp(chd_path, log_callback=None, progress_callback=None):
-    temp_base = "C:\\Temp"
-    if not os.path.exists(temp_base):
-        try:
-            os.makedirs(temp_base, exist_ok=True)
-        except PermissionError:
-            temp_base = tempfile.gettempdir()
+    """Extrai CHD para CUE+BIN usando chdman.exe. Usa temp dir seguro."""
+    temp_base = os.environ.get('TEMP', tempfile.gettempdir())
     temp_dir = tempfile.mkdtemp(prefix="POPSTEMP_", dir=temp_base)
     game_name = os.path.splitext(os.path.basename(chd_path))[0]
     cue_path = os.path.join(temp_dir, f"{game_name}.cue")
@@ -271,6 +282,7 @@ def convert_vcd_to_cue_bin_with_pops2cue(vcd_path, log_callback=None):
             return True
         else:
             if log_callback: log_callback(f"❌ Arquivos CUE/BIN não foram gerados pelo POPS2CUE.EXE!")
+            if log_callback: log_callback(f"   Esperado: {output_cue} + {output_bin}")
             if log_callback: log_callback(f"❌ Saída do POPS2CUE: {' | '.join(output_lines)}")
             return False
     except Exception as e:
@@ -307,10 +319,7 @@ def convert_to_chd(input_path, output_chd, log_callback=None):
     if not os.path.exists(chdman_path):
         if log_callback: log_callback(f"❌ {CHDMAN_EXE} não encontrado!")
         return False
-
     ext = os.path.splitext(input_path)[1].lower()
-
-    # Se for ISO sem CUE, gera um CUE temporário
     cue_path = None
     if ext == ".iso":
         cue_path = os.path.splitext(input_path)[0] + ".cue"
@@ -329,7 +338,6 @@ def convert_to_chd(input_path, output_chd, log_callback=None):
     else:
         if log_callback: log_callback(f"❌ Formato não suportado para conversão: {ext}")
         return False
-
     comando = [chdman_path, "createcd", "-i", cue_path, "-o", output_chd]
     try:
         if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(cue_path)} → {os.path.basename(output_chd)}...")
@@ -342,7 +350,6 @@ def convert_to_chd(input_path, output_chd, log_callback=None):
     except Exception as e:
         if log_callback: log_callback(f"❌ Erro: {e}")
         return False
-
 
 def convert_chd_to_gdi(chd_path, output_gdi, log_callback=None):
     script_root = get_script_root()
@@ -363,69 +370,86 @@ def convert_chd_to_gdi(chd_path, output_gdi, log_callback=None):
         if log_callback: log_callback(f"❌ Erro: {e}")
         return False
 
+# ✅ ✅ ✅ CORREÇÃO CRÍTICA: CHD → ISO DIRETO (SEM CUE TEMPORÁRIA)
 def convert_chd_to_iso_only(chd_path, output_iso, log_callback=None):
     script_root = get_script_root()
     chdman_path = os.path.join(script_root, CHDMAN_EXE)
     if not os.path.exists(chdman_path):
         if log_callback: log_callback(f"❌ {CHDMAN_EXE} não encontrado!")
         return False
-    temp_cue = os.path.splitext(output_iso)[0] + ".cue"
-    comando = [chdman_path, "extractcd", "-i", chd_path, "-o", temp_cue, "-ob", output_iso]
+    base_name = os.path.splitext(output_iso)[0]
+    chd_dir = os.path.dirname(chd_path)
+    temp_cue = os.path.join(chd_dir, f"{base_name}.cue")
+    temp_bin = os.path.join(chd_dir, f"{base_name}.bin")
+    comando = [chdman_path, "extractcd", "-i", chd_path, "-o", temp_cue, "-ob", temp_bin]
     try:
-        if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(chd_path)} → ISO...")
-        result = subprocess.run(comando, capture_output=True, text=True, encoding='utf-8', errors='replace')
+        if log_callback: 
+            log_callback(f"▶️  Convertendo {os.path.basename(chd_path)} → ISO...")
+        result = subprocess.run(
+            comando,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace'
+        )
         if result.returncode != 0:
-            if log_callback: log_callback(f"❌ Falha: {result.stderr}")
+            if log_callback:
+                log_callback(f"❌ Falha na extração: {result.stderr.strip()}")
             return False
+        if not os.path.exists(temp_bin) or os.path.getsize(temp_bin) == 0:
+            if log_callback:
+                log_callback(f"❌ Arquivo BIN não gerado ou vazio: {temp_bin}")
+            return False
+        size_mb = os.path.getsize(temp_bin) / (1024 * 1024)
+        if log_callback:
+            log_callback(f"   ✅ Extraído: {os.path.basename(temp_bin)} ({size_mb:.1f} MB)")
+        if log_callback: 
+            log_callback(f"   🔄 Renomeando {os.path.basename(temp_bin)} → {os.path.basename(output_iso)}...")
+        shutil.move(temp_bin, output_iso)
         if os.path.exists(temp_cue):
             os.remove(temp_cue)
-        if log_callback: log_callback(f"✅ ISO criado: {os.path.basename(output_iso)}")
+            if log_callback: 
+                log_callback(f"   🗑️  Limpeza concluída: {os.path.basename(temp_cue)} removido")
+        if log_callback: 
+            log_callback(f"🎉 ISO criado com sucesso: {os.path.basename(output_iso)}")
         return True
     except Exception as e:
-        if log_callback: log_callback(f"❌ Erro: {e}")
+        if log_callback: 
+            log_callback(f"❌ Erro inesperado: {e}")
+        try:
+            if os.path.exists(temp_cue): os.remove(temp_cue)
+            if os.path.exists(temp_bin): os.remove(temp_bin)
+        except:
+            pass
         return False
 
 # ✅ ✅ ✅ NOVAS FUNÇÕES: ISO ↔ ZSO COM AMBIENTE ISOLADO E LIMPEZA AUTOMÁTICA
 def convert_iso_to_zso(iso_path, output_zso, log_callback=None):
-    """Converte ISO → ZSO em ambiente isolado: copia ziso.exe e usa pasta temporária dentro da pasta do jogo."""
     script_root = get_script_root()
     ziso_exe = os.path.join(script_root, ZISO_EXE)
     if not os.path.exists(ziso_exe):
-        if log_callback:
-            log_callback(f"❌ {ZISO_EXE} não encontrado na pasta do script.")
+        if log_callback: log_callback(f"❌ {ZISO_EXE} não encontrado na pasta do script.")
         return False
     if not os.path.exists(iso_path):
-        if log_callback:
-            log_callback(f"❌ Arquivo ISO não encontrado: {iso_path}")
+        if log_callback: log_callback(f"❌ Arquivo ISO não encontrado: {iso_path}")
         return False
-    # ✅ GARANTIR QUE A PASTA DE SAÍDA EXISTA (NOVA LINHA)
     ensure_dir(os.path.dirname(output_zso))
-    # ✅ Obter pasta do arquivo ISO (não a raiz do script!)
     iso_dir = os.path.dirname(iso_path)
     iso_filename = os.path.basename(iso_path)
     iso_name_no_ext = os.path.splitext(iso_filename)[0]
-    # ✅ Criar pastas temporárias dentro da pasta do jogo
     iso_temp_dir = os.path.join(iso_dir, "ISO")
     zso_temp_dir = os.path.join(iso_dir, "ZSO")
     ensure_dir(iso_temp_dir)
     ensure_dir(zso_temp_dir)
-    # ✅ Caminhos temporários
     temp_iso_path = os.path.join(iso_temp_dir, iso_filename)
     temp_ziso_exe = os.path.join(iso_temp_dir, ZISO_EXE)
     temp_zso_path = os.path.join(zso_temp_dir, f"{iso_name_no_ext}.zso")
     try:
-        # ✅ Passo 1: MOVER o arquivo ISO para a pasta ISO/ (NÃO COPIAR!)
-        if log_callback:
-            log_callback(f"📁 Movendo ISO para ambiente temporário: {iso_filename}")
-        shutil.move(iso_path, temp_iso_path)  # ✅ MOVIMENTAÇÃO REAL — ORIGINAL AGORA ESTÁ AQUI
-        # ✅ Passo 2: Copiar ziso.exe para a pasta ISO/
-        if log_callback:
-            log_callback(f"🔧 Copiando {ZISO_EXE} para ambiente temporário...")
+        if log_callback: log_callback(f"📁 Movendo ISO para ambiente temporário: {iso_filename}")
+        shutil.move(iso_path, temp_iso_path)
+        if log_callback: log_callback(f"🔧 Copiando {ZISO_EXE} para ambiente temporário...")
         shutil.copy2(ziso_exe, temp_ziso_exe)
-        # ✅ Passo 3: Executar conversão usando -c9 (sintaxe correta para a maioria dos ziso.exe)
-        if log_callback:
-            log_callback(f"▶️ Convertendo {iso_filename} → {iso_name_no_ext}.zso (ambiente isolado)...")
-        # ✅ ✅ ✅ CORREÇÃO CRÍTICA: Usa -c9, NÃO -c -l 9
+        if log_callback: log_callback(f"▶️ Convertendo {iso_filename} → {iso_name_no_ext}.zso (ambiente isolado)...")
         comando = [temp_ziso_exe, "-c9", temp_iso_path, temp_zso_path]
         result = subprocess.run(
             comando,
@@ -433,106 +457,65 @@ def convert_iso_to_zso(iso_path, output_zso, log_callback=None):
             text=True,
             encoding='utf-8',
             errors='replace',
-            cwd=iso_temp_dir  # ✅ Executa dentro da pasta ISO/
+            cwd=iso_temp_dir
         )
         if result.returncode != 0:
-            if log_callback:
-                log_callback(f"❌ Falha na conversão ISO → ZSO: {result.stderr.strip()}")
+            if log_callback: log_callback(f"❌ Falha na conversão ISO → ZSO: {result.stderr.strip()}")
             return False
-        # ✅ Passo 4: Verificar se o ZSO foi gerado
         if not os.path.exists(temp_zso_path):
-            if log_callback:
-                log_callback(f"❌ Arquivo ZSO não foi gerado após conversão!")
+            if log_callback: log_callback(f"❌ Arquivo ZSO não foi gerado após conversão!")
             return False
-        # ✅ Passo 5: Mover o ZSO resultante para a pasta de saída escolhida
-        if log_callback:
-            log_callback(f"📤 Movendo ZSO resultante para destino final: {os.path.basename(output_zso)}")
+        if log_callback: log_callback(f"📤 Movendo ZSO resultante para destino final: {os.path.basename(output_zso)}")
         shutil.move(temp_zso_path, output_zso)
-        # ✅ PASSO 6: RESTAURAR O ARQUIVO ORIGINAL (ISO) PARA ONDE ESTAVA — ANTES DA LIMPEZA!
-        if log_callback:
-            log_callback(f"🔄 Restaurando ISO original para local: {iso_path}")
-        shutil.move(temp_iso_path, iso_path)  # ✅ AGORA O ORIGINAL VOLTA!
-        # ✅ Passo 7: Limpeza: apagar pastas temporárias e ziso.exe
-        if log_callback:
-            log_callback(f"🧹 Limpando ambiente temporário...")
-        # Remove o ziso.exe copiado
-        if os.path.exists(temp_ziso_exe):
-            os.remove(temp_ziso_exe)
-        # Remove a pasta ISO (vazia agora)
-        if os.path.exists(iso_temp_dir) and len(os.listdir(iso_temp_dir)) == 0:
-            os.rmdir(iso_temp_dir)
-        # Remove a pasta ZSO (vazia agora)
-        if os.path.exists(zso_temp_dir) and len(os.listdir(zso_temp_dir)) == 0:
-            os.rmdir(zso_temp_dir)
-        if log_callback:
-            log_callback(f"✅ Conversão ISO → ZSO concluída com sucesso!")
-            log_callback(f"   Arquivo final: {output_zso}")
+        if log_callback: log_callback(f"🔄 Restaurando ISO original para local: {iso_path}")
+        shutil.move(temp_iso_path, iso_path)
+        if log_callback: log_callback(f"🧹 Limpando ambiente temporário...")
+        if os.path.exists(temp_ziso_exe): os.remove(temp_ziso_exe)
+        if os.path.exists(iso_temp_dir) and len(os.listdir(iso_temp_dir)) == 0: os.rmdir(iso_temp_dir)
+        if os.path.exists(zso_temp_dir) and len(os.listdir(zso_temp_dir)) == 0: os.rmdir(zso_temp_dir)
+        if log_callback: log_callback(f"✅ Conversão ISO → ZSO concluída com sucesso!")
         return True
     except Exception as e:
-        if log_callback:
-            log_callback(f"❌ Erro durante conversão ISO → ZSO: {e}")
-        # ✅ RESTAURA O ARQUIVO ORIGINAL EM CASO DE ERRO
+        if log_callback: log_callback(f"❌ Erro durante conversão ISO → ZSO: {e}")
         try:
             if os.path.exists(temp_iso_path) and not os.path.exists(iso_path):
-                shutil.move(temp_iso_path, iso_path)  # ✅ DEVOLVE O ISO ORIGINAL PARA ONDE ESTAVA
-                if log_callback:
-                    log_callback(f"🔄 Arquivo ISO original restaurado: {iso_path}")
-        except Exception as restore_error:
-            if log_callback:
-                log_callback(f"⚠️ Falha ao restaurar ISO original: {restore_error}")
-        # ✅ LIMPEZA FINAL — APENAS AS PASTAS TEMPORÁRIAS
+                shutil.move(temp_iso_path, iso_path)
+        except:
+            pass
         try:
-            if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe):
-                os.remove(temp_ziso_exe)
-            if os.path.exists(iso_temp_dir):
-                shutil.rmtree(iso_temp_dir, ignore_errors=True)
-            if os.path.exists(zso_temp_dir):
-                shutil.rmtree(zso_temp_dir, ignore_errors=True)
+            if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe): os.remove(temp_ziso_exe)
+            if os.path.exists(iso_temp_dir): shutil.rmtree(iso_temp_dir, ignore_errors=True)
+            if os.path.exists(zso_temp_dir): shutil.rmtree(zso_temp_dir, ignore_errors=True)
         except:
             pass
         return False
 
-
 def convert_zso_to_iso(zso_path, output_iso, log_callback=None):
-    """Converte ZSO → ISO em ambiente isolado usando ziso.exe"""
     script_root = get_script_root()
     ziso_exe = os.path.join(script_root, ZISO_EXE)
     if not os.path.exists(ziso_exe):
-        if log_callback:
-            log_callback(f"❌ {ZISO_EXE} não encontrado na pasta do script.")
+        if log_callback: log_callback(f"❌ {ZISO_EXE} não encontrado na pasta do script.")
         return False
     if not os.path.exists(zso_path):
-        if log_callback:
-            log_callback(f"❌ Arquivo ZSO não encontrado: {zso_path}")
+        if log_callback: log_callback(f"❌ Arquivo ZSO não encontrado: {zso_path}")
         return False
-    # ✅ GARANTIR QUE A PASTA DE SAÍDA EXISTA (NOVA LINHA)
     ensure_dir(os.path.dirname(output_iso))
-    # Obter pasta do arquivo ZSO
     zso_dir = os.path.dirname(zso_path)
     zso_filename = os.path.basename(zso_path)
     zso_name_no_ext = os.path.splitext(zso_filename)[0]
-    # Criar pastas temporárias dentro da pasta do jogo
     zso_temp_dir = os.path.join(zso_dir, "ZSO")
     iso_temp_dir = os.path.join(zso_dir, "ISO")
     ensure_dir(zso_temp_dir)
     ensure_dir(iso_temp_dir)
-    # Caminhos temporários
     temp_zso_path = os.path.join(zso_temp_dir, zso_filename)
     temp_ziso_exe = os.path.join(zso_temp_dir, ZISO_EXE)
     temp_iso_path = os.path.join(iso_temp_dir, f"{zso_name_no_ext}.iso")
     try:
-        # ✅ Passo 1: MOVER o arquivo ZSO para a pasta ZSO/ (NÃO COPIAR!)
-        if log_callback:
-            log_callback(f"📁 Movendo ZSO para ambiente temporário: {zso_filename}")
-        shutil.move(zso_path, temp_zso_path)  # ✅ MOVIMENTAÇÃO REAL — ORIGINAL AGORA ESTÁ AQUI
-        # ✅ Passo 2: Copiar ziso.exe para a pasta ZSO/
-        if log_callback:
-            log_callback(f"🔧 Copiando {ZISO_EXE} para ambiente temporário...")
+        if log_callback: log_callback(f"📁 Movendo ZSO para ambiente temporário: {zso_filename}")
+        shutil.move(zso_path, temp_zso_path)
+        if log_callback: log_callback(f"🔧 Copiando {ZISO_EXE} para ambiente temporário...")
         shutil.copy2(ziso_exe, temp_ziso_exe)
-        # ✅ Passo 3: Executar conversão usando -c 0 (extração)
-        if log_callback:
-            log_callback(f"▶️ Convertendo {zso_filename} → {zso_name_no_ext}.iso (ambiente isolado)...")
-        # Usa -c 0 para descompactar, não -x
+        if log_callback: log_callback(f"▶️ Convertendo {zso_filename} → {zso_name_no_ext}.iso (ambiente isolado)...")
         comando = [temp_ziso_exe, "-c", "0", temp_zso_path, temp_iso_path]
         result = subprocess.run(
             comando,
@@ -540,67 +523,38 @@ def convert_zso_to_iso(zso_path, output_iso, log_callback=None):
             text=True,
             encoding='utf-8',
             errors='replace',
-            cwd=zso_temp_dir  # Executa dentro da pasta ZSO/
+            cwd=zso_temp_dir
         )
-        # Captura de erro detalhada
         if result.returncode != 0:
-            if log_callback:
-                log_callback(f"❌ Falha na conversão ZSO → ISO: {result.stderr.strip()}")
-                log_callback(f"📝 Detalhes do erro: {result.stdout.strip()}")
+            if log_callback: log_callback(f"❌ Falha na conversão ZSO → ISO: {result.stderr.strip()}")
             return False
-        # Passo 4: Verificar se o ISO foi gerado
         if not os.path.exists(temp_iso_path):
-            if log_callback:
-                log_callback(f"❌ Arquivo ISO não foi gerado após conversão!")
+            if log_callback: log_callback(f"❌ Arquivo ISO não foi gerado após conversão!")
             return False
-        # ✅ Passo 5: Mover o ISO resultante para a pasta de saída escolhida
-        if log_callback:
-            log_callback(f"📤 Movendo ISO resultante para destino final: {os.path.basename(output_iso)}")
+        if log_callback: log_callback(f"📤 Movendo ISO resultante para destino final: {os.path.basename(output_iso)}")
         shutil.move(temp_iso_path, output_iso)
-        # ✅ PASSO 6: RESTAURAR O ARQUIVO ORIGINAL (ZSO) PARA ONDE ESTAVA — ANTES DA LIMPEZA!
-        if log_callback:
-            log_callback(f"🔄 Restaurando ZSO original para local: {zso_path}")
-        shutil.move(temp_zso_path, zso_path)  # ✅ AGORA O ORIGINAL VOLTA!
-        # ✅ Passo 7: Limpeza: apagar pastas temporárias e ziso.exe
-        if log_callback:
-            log_callback(f"🧹 Limpando ambiente temporário...")
-        # Remove o ziso.exe copiado
-        if os.path.exists(temp_ziso_exe):
-            os.remove(temp_ziso_exe)
-        # Remove a pasta ZSO (vazia agora)
-        if os.path.exists(zso_temp_dir) and len(os.listdir(zso_temp_dir)) == 0:
-            os.rmdir(zso_temp_dir)
-        # Remove a pasta ISO (vazia agora)
-        if os.path.exists(iso_temp_dir) and len(os.listdir(iso_temp_dir)) == 0:
-            os.rmdir(iso_temp_dir)
-        if log_callback:
-            log_callback(f"✅ Conversão ZSO → ISO concluída com sucesso!")
-            log_callback(f"   Arquivo final: {output_iso}")
+        if log_callback: log_callback(f"🔄 Restaurando ZSO original para local: {zso_path}")
+        shutil.move(temp_zso_path, zso_path)
+        if log_callback: log_callback(f"🧹 Limpando ambiente temporário...")
+        if os.path.exists(temp_ziso_exe): os.remove(temp_ziso_exe)
+        if os.path.exists(zso_temp_dir) and len(os.listdir(zso_temp_dir)) == 0: os.rmdir(zso_temp_dir)
+        if os.path.exists(iso_temp_dir) and len(os.listdir(iso_temp_dir)) == 0: os.rmdir(iso_temp_dir)
+        if log_callback: log_callback(f"✅ Conversão ZSO → ISO concluída com sucesso!")
         return True
     except Exception as e:
-        if log_callback:
-            log_callback(f"❌ Erro durante conversão ZSO → ISO: {e}")
-        # ✅ RESTAURA O ARQUIVO ORIGINAL EM CASO DE ERRO
+        if log_callback: log_callback(f"❌ Erro durante conversão ZSO → ISO: {e}")
         try:
             if os.path.exists(temp_zso_path) and not os.path.exists(zso_path):
-                shutil.move(temp_zso_path, zso_path)  # ✅ DEVOLVE O ZSO ORIGINAL PARA ONDE ESTAVA
-                if log_callback:
-                    log_callback(f"🔄 Arquivo ZSO original restaurado: {zso_path}")
-        except Exception as restore_error:
-            if log_callback:
-                log_callback(f"⚠️ Falha ao restaurar ZSO original: {restore_error}")
-        # ✅ LIMPEZA FINAL — APENAS AS PASTAS TEMPORÁRIAS
+                shutil.move(temp_zso_path, zso_path)
+        except:
+            pass
         try:
-            if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe):
-                os.remove(temp_ziso_exe)
-            if os.path.exists(zso_temp_dir):
-                shutil.rmtree(zso_temp_dir, ignore_errors=True)
-            if os.path.exists(iso_temp_dir):
-                shutil.rmtree(iso_temp_dir, ignore_errors=True)
+            if 'temp_ziso_exe' in locals() and os.path.exists(temp_ziso_exe): os.remove(temp_ziso_exe)
+            if os.path.exists(zso_temp_dir): shutil.rmtree(zso_temp_dir, ignore_errors=True)
+            if os.path.exists(iso_temp_dir): shutil.rmtree(iso_temp_dir, ignore_errors=True)
         except:
             pass
         return False
-
 
 # ---------------- Funções de Backup e Configuração ----------------
 def backup_conf_file(target_dir):
@@ -663,7 +617,86 @@ def get_elf_name_from_game_key(game_key, target_dir):
                     return os.path.splitext(elf_name)[0]
     return None
 
-# ✅ ✅ ✅ FUNÇÃO PRINCIPAL REVISADA: process_game com suporte perfeito a .cue/.bin na aba principal
+# [NOVO] - Função auxiliar para buscar e copiar descrição .cfg
+def copy_description_cfg(game_code, script_root, target_dir, log_callback=None):
+    """
+    Procura por um arquivo .cfg com nome igual ao game_code dentro da pasta _description_psx.
+    Aceita tanto '[SLUS_008.24]' quanto 'SLUS_008.24'.
+    Cria a pasta 'CFG' na RAIZ do target_dir (ex: K:/CFG/) se não existir.
+    COPIA o arquivo .cfg para lá (NÃO MOVE — mantém o original em _description_psx).
+    Retorna True se encontrou e copiou, False caso contrário.
+    """
+    desc_dir = os.path.join(script_root, "_description_psx")
+    
+    # Verifica se a pasta _description_psx existe
+    if not os.path.exists(desc_dir):
+        if log_callback:
+            log_callback(f"❌ Pasta '_description_psx' NÃO ENCONTRADA em: {desc_dir}")
+        return False
+
+    # Normaliza o código do jogo: remove colchetes se houver
+    clean_code = game_code.strip()
+    if clean_code.startswith('[') and clean_code.endswith(']'):
+        clean_code = clean_code[1:-1].strip()
+
+    # Nome esperado do arquivo .cfg
+    cfg_filename = f"{clean_code}.cfg"
+    cfg_path = os.path.join(desc_dir, cfg_filename)
+
+    # Verifica se o arquivo .cfg existe
+    if not os.path.isfile(cfg_path):
+        if log_callback:
+            log_callback(f"ℹ️ Arquivo '{cfg_filename}' não encontrado em '_description_psx'.")
+        return False
+
+    # ✅ PASSO CRÍTICO: Define a pasta CFG na RAIZ do diretório de saída
+    cfg_target_dir = os.path.join(target_dir, "CFG")  # ← ISSO É K:/CFG!
+    ensure_dir(cfg_target_dir)  # ✅ CRIA SE NÃO EXISTIR
+
+    if log_callback:
+        log_callback(f"✅ Pasta 'CFG' criada/verificada em: {cfg_target_dir}")
+
+    dest_path = os.path.join(cfg_target_dir, cfg_filename)
+
+    # Verifica se já existe no destino (comparação de conteúdo)
+    if os.path.exists(dest_path):
+        if os.path.getsize(cfg_path) == os.path.getsize(dest_path):
+            with open(cfg_path, 'rb') as f1, open(dest_path, 'rb') as f2:
+                if f1.read() == f2.read():
+                    if log_callback:
+                        log_callback(f"✅ Descrição já existe e é idêntica: {cfg_filename}")
+                    return True
+        try:
+            os.remove(dest_path)
+            if log_callback:
+                log_callback(f"⚠️ Sobrescrevendo arquivo existente: {cfg_filename}")
+        except Exception as e:
+            if log_callback:
+                log_callback(f"❌ Falha ao sobrescrever {cfg_filename}: {e}")
+            return False
+
+    # ✅ COPIA o arquivo (NÃO MOVE!) — O ORIGINAL PERMANECE EM _description_psx/
+    try:
+        shutil.copy2(cfg_path, dest_path)
+        if log_callback:
+            log_callback(f"📄 DESCRICAO COPIADA COM SUCESSO: {cfg_filename} → {dest_path}")
+        return True
+
+    except PermissionError:
+        if log_callback:
+            log_callback(f"❌ Permissão negada ao copiar {cfg_filename}. Verifique permissões da pasta.")
+        return False
+    except FileNotFoundError:
+        if log_callback:
+            log_callback(f"❌ Arquivo fonte não encontrado após validação: {cfg_path}")
+        return False
+    except Exception as e:
+        if log_callback:
+            log_callback(f"❌ Erro inesperado ao copiar {cfg_filename}: {e}")
+        return False
+
+
+# ✅ ✅ ✅ FUNÇÃO PRINCIPAL REVISADA: process_game com suporte perfeito a .cue/.bin + DESCRIÇÕES
 def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=None, log_callback=None, progress_callback=None):
     original_name = os.path.basename(file_path)
     game_name, ext = os.path.splitext(original_name)
@@ -678,7 +711,6 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
     conf_name = re.sub(r"\[.*?\]", "", game_name).strip()
     temp_dir = None
 
-    # ✅ [MUDANÇA] - LÓGICA REVISADA PARA ABA "CONVERSÃO DE JOGOS" - SEM AFETAR A ABAS AVANÇADAS
     if ext == ".chd":
         cue_path, bin_path, temp_dir = convert_chd_to_iso_temp(file_path, log_callback, progress_callback)
         if not cue_path or not bin_path:
@@ -699,16 +731,12 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
             if log_callback: log_callback(f"❌ Falha ao converter CUE para VCD: {e}")
             if temp_dir: shutil.rmtree(temp_dir, ignore_errors=True)
             return False
-        file_path = None  # Evita cópia duplicada
-
+        file_path = None
     elif ext == ".cue":
-        # Verifica se o .bin existe
         bin_path = os.path.splitext(file_path)[0] + ".bin"
         if not os.path.exists(bin_path):
-            if log_callback:
-                log_callback(f"❌ Arquivo BIN associado não encontrado: {bin_path}")
+            if log_callback: log_callback(f"❌ Arquivo BIN associado não encontrado: {bin_path}")
             return False
-        # Usa a mesma lógica da aba avançada: converte CUE+BIN → VCD com cue2pops.exe
         script_root = get_script_root()
         cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
         if not os.path.exists(cue2pops_path):
@@ -718,15 +746,11 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
         if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(file_path)} + {os.path.basename(bin_path)} para VCD...")
         if not convert_cue_to_vcd(file_path, vcd_output, log_callback):
             return False
-
     elif ext == ".bin":
-        # Verifica se o .cue existe
         cue_path = os.path.splitext(file_path)[0] + ".cue"
         if not os.path.exists(cue_path):
-            if log_callback:
-                log_callback(f"❌ Arquivo CUE associado não encontrado: {cue_path}")
+            if log_callback: log_callback(f"❌ Arquivo CUE associado não encontrado: {cue_path}")
             return False
-        # Usa a mesma lógica da aba avançada: converte CUE+BIN → VCD com cue2pops.exe
         script_root = get_script_root()
         cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
         if not os.path.exists(cue2pops_path):
@@ -736,9 +760,7 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
         if log_callback: log_callback(f"▶️ Convertendo {os.path.basename(cue_path)} + {os.path.basename(file_path)} para VCD...")
         if not convert_cue_to_vcd(cue_path, vcd_output, log_callback):
             return False
-
     else:
-        # Para todos os outros formatos (.iso, .img, etc.) → copia diretamente como VCD
         vcd_path = os.path.join(pops_dir, vcd_name)
         if log_callback: log_callback(f"📦 Copiando arquivo original ({ext}) como VCD...")
         convert_to_vcd(file_path, vcd_path, log_callback)
@@ -749,15 +771,24 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
     copy_file(SLOT1_VMC_NAME, os.path.join(save_folder, SLOT1_VMC_NAME))
 
     script_root = get_script_root()
+
+    # [MUDANÇA] - Aplicar fix de _pops_fix (já existente)
     fix_src = os.path.join(script_root, "_pops_fix", elf_name_no_ext)
     if os.path.exists(fix_src):
         if log_callback: log_callback(f"🔧 Aplicando fix para {elf_name_no_ext}...")
         copy_tree(fix_src, save_folder, log_callback)
 
+    # [NOVO] - Aplicar descrição .cfg de _description_psx
+    # Usa o mesmo base_name (código do jogo) para procurar SLUS_XXX.XX.cfg
+        # [CORREÇÃO FINAL] - Copia .cfg para a RAIZ da pasta de saída (mesmo nível da pasta POPS)
+    if code_in_brackets:
+        copy_description_cfg(code_in_brackets, script_root, target_dir, log_callback)
+    else:
+        copy_description_cfg(base_name, script_root, target_dir, log_callback)
+
     outside_elf = os.path.join(target_dir, elf_name)
     copy_file(POPS_ELF_NAME, outside_elf)
     update_conf_apps(conf_name, target_dir, elf_name)
-
     art_dir = os.path.join(target_dir, ART_DIR_NAME)
     if cover_path:
         save_cover(elf_name_no_ext, art_dir, cover_path)
@@ -768,6 +799,90 @@ def process_game(file_path, pops_dir, target_dir, cover_path=None, logo_path=Non
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     return True
+
+# ✅ ✅ ✅ FUNÇÃO FINAL: Instalação USB com merge inteligente e ocultação
+def install_usb_files(destination_dir, log_callback=None):
+    """
+    Copia TODA a estrutura da pasta 'usb_install/' (incluindo subpastas e arquivos)
+    para o destino selecionado, e oculta todos os itens no Windows.
+    
+    Comportamento:
+    - Se destino NÃO existe → cria e copia tudo
+    - Se destino EXISTE → mescla (merge) o conteúdo sem apagar o que já está lá
+    - Arquivos iguais são ignorados (comparação por conteúdo)
+    - Pastas são copiadas recursivamente
+    - Todos os itens são ocultados no Windows
+    """
+    script_root = get_script_root()
+    usb_install_path = os.path.join(script_root, "usb_install")
+
+    if not os.path.exists(usb_install_path):
+        if log_callback: log_callback("❌ Pasta 'usb_install' não encontrada na raiz do script!", "error")
+        return False
+
+    items = os.listdir(usb_install_path)
+    if not items:
+        if log_callback: log_callback("⚠️ Pasta 'usb_install' está vazia. Nada para copiar.", "warning")
+        return False
+
+    total_items = len(items)
+    if log_callback: log_callback(f"🚀 Iniciando instalação USB... ({total_items} itens)", "info")
+
+    success_count = 0
+    failed_count = 0
+    skipped_count = 0
+
+    for item in items:
+        src = os.path.join(usb_install_path, item)
+        dst = os.path.join(destination_dir, item)
+
+        try:
+            if os.path.isdir(src):
+                # ✅ PASTA: Mescla recursivamente
+                if os.path.exists(dst):
+                    if log_callback: log_callback(f"📁 Mesclando pasta: {item}", "info")
+                    copy_tree(src, dst, lambda msg: log_callback(msg, "info"))
+                else:
+                    shutil.copytree(src, dst)
+                    if log_callback: log_callback(f"📁 Copiado diretório: {item}", "success")
+            else:
+                # ✅ ARQUIVO: Verifica se já existe e é igual
+                if os.path.exists(dst):
+                    if os.path.getsize(src) == os.path.getsize(dst):
+                        with open(src, 'rb') as f1, open(dst, 'rb') as f2:
+                            if f1.read() == f2.read():
+                                if log_callback: log_callback(f"✅ Ignorado (igual): {item}", "info")
+                                skipped_count += 1
+                                continue
+                    # Se diferente, sobrescreve
+                    shutil.copy2(src, dst)
+                    if log_callback: log_callback(f"📄 Atualizado: {item}", "success")
+                else:
+                    shutil.copy2(src, dst)
+                    if log_callback: log_callback(f"📄 Copiado: {item}", "success")
+
+            # ✅ OCULTAR ITEM NO WINDOWS (arquivo OU pasta)
+            if sys.platform == "win32":
+                import ctypes
+                FILE_ATTRIBUTE_HIDDEN = 0x02
+                ctypes.windll.kernel32.SetFileAttributesW(dst, FILE_ATTRIBUTE_HIDDEN)
+                if log_callback: log_callback(f"👁️  Ocultado: {item}", "info")
+
+            success_count += 1
+
+        except Exception as e:
+            failed_count += 1
+            if log_callback: log_callback(f"❌ Falha ao copiar '{item}': {str(e)}", "error")
+
+    # ✅ FINALIZAÇÃO
+    if log_callback:
+        log_callback(f"\n🎉 INSTALAÇÃO CONCLUÍDA!\n"
+                     f"   ✔️ Sucesso: {success_count}\n"
+                     f"   ⚠️ Ignorados (iguais): {skipped_count}\n"
+                     f"   ❌ Falhas: {failed_count}", "success")
+
+    return success_count > 0
+
 ```
 └── popstation_gui.py
 ```python
@@ -780,19 +895,21 @@ import datetime
 import winsound
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from popstation_core import *
+import os
+import json
 
 # ---------------- Configurações de GUI ----------------
-COVER_SIZE = (120, 120)
-LOGO_SIZE = (60, 60)
-PREVIEW_SIZE = (240, 240)
+COVER_SIZE = (150, 150)   # Tamanho das capas (aumentado)
+LOGO_SIZE = (60, 60)      # Tamanho dos logos
+PREVIEW_SIZE = (240, 240) # Tamanho do preview ao passar o mouse
 TILE_BG = "#2e2e2e"
 BG_COLOR = "#1b1b1b"
 TEXT_COLOR = "#e0e0e0"
 ACCENT_COLOR = "#4a90e2"
-ERROR_COLOR = "#ff5555"
+ERROR_COLOR = "#ff555b"
 SUCCESS_COLOR = "#50fa7b"
 WARNING_COLOR = "#f1fa8c"
-CURRENT_VERSION = "4.1"
+CURRENT_VERSION = "4.3"
 
 # ---------------- Tooltip de Imagem ----------------
 class ImageTooltip:
@@ -833,7 +950,7 @@ class PopsManagerGUI:
     def __init__(self, root):
         self.root = root
         root.title(f"POPStation v{CURRENT_VERSION}")
-        root.geometry("1100x750")
+        root.geometry("1100x750")  # Tamanho fixo padrão
         root.configure(bg=BG_COLOR)
         self.current_theme = "dark"
         self.retro_mode = False
@@ -860,16 +977,19 @@ class PopsManagerGUI:
         self.tab_convert = ttk.Frame(self.notebook)
         self.tab_manage = ttk.Frame(self.notebook)
         self.tab_advanced = ttk.Frame(self.notebook)
+        self.tab_usb_install = ttk.Frame(self.notebook)
         self.tab_console = ttk.Frame(self.notebook)
 
         self.notebook.add(self.tab_convert, text="🎮 Conversão de Jogos")
         self.notebook.add(self.tab_manage, text="📁 Gerenciamento de Jogos")
         self.notebook.add(self.tab_advanced, text="🔄 Conversões Avançadas")
+        self.notebook.add(self.tab_usb_install, text="🔌 Installs USB")
         self.notebook.add(self.tab_console, text="⌨️ Console")
 
         self.setup_convert_tab()
         self.setup_manage_tab()
         self.setup_advanced_tab()
+        self.setup_usb_install_tab()
         self.setup_console_tab()
 
         root.bind("<Control-Shift-R>", self.toggle_retro_mode)
@@ -956,16 +1076,54 @@ class PopsManagerGUI:
         self.log_text.tag_config("warning", foreground=WARNING_COLOR)
 
     def setup_manage_tab(self):
-        search_frame = tk.Frame(self.tab_manage, bg=BG_COLOR)
-        search_frame.pack(fill="x", padx=5, pady=5)
-        tk.Label(search_frame, text="🔍 Pesquisar:", bg=BG_COLOR, fg=TEXT_COLOR).pack(side="left", padx=5)
+        # --- Frame superior: Contagem e uso de disco ---
+        top_frame = tk.Frame(self.tab_manage, bg=BG_COLOR)
+        top_frame.pack(fill="x", padx=5, pady=5)
+
+        # Contagem de jogos
+        self.games_count_label = tk.Label(
+            top_frame,
+            text="🔍 Jogos: 0",
+            bg=BG_COLOR,
+            fg=TEXT_COLOR,
+            font=("Arial", 10, "bold")
+        )
+        self.games_count_label.pack(side="left", padx=10)
+
+        # Uso de disco
+        self.disk_usage_label = tk.Label(
+            top_frame,
+            text="💾 Uso: -- / -- (---% livre)",
+            bg=BG_COLOR,
+            fg=TEXT_COLOR,
+            font=("Arial", 9)
+        )
+        self.disk_usage_label.pack(side="right", padx=10)
+
+        # --- Barra de pesquisa + modo de exibição ---
+        search_and_view_frame = tk.Frame(self.tab_manage, bg=BG_COLOR)
+        search_and_view_frame.pack(fill="x", padx=5, pady=5)
+
+        tk.Label(search_and_view_frame, text="🔍 Pesquisar:", bg=BG_COLOR, fg=TEXT_COLOR).pack(side="left", padx=5)
         self.search_var = tk.StringVar()
-        self.search_var.trace("w", lambda *args: self.refresh_manage_tab())
-        tk.Entry(search_frame, textvariable=self.search_var, width=50).pack(side="left", padx=5)
+        self.search_var.trace("w", lambda *args: self.refresh_manage_tab())  # Atualiza em tempo real
+        tk.Entry(search_and_view_frame, textvariable=self.search_var, width=40).pack(side="left", padx=5, fill="x", expand=True)
 
-        ttk.Button(search_frame, text="📊 Exportar CSV", command=self.export_csv).pack(side="right", padx=5)
-        ttk.Button(search_frame, text="📂 Abrir Pasta", command=self.open_target_folder).pack(side="right", padx=5)
+        # Botões de modo de exibição
+        view_frame = tk.Frame(search_and_view_frame, bg=BG_COLOR)
+        view_frame.pack(side="right", padx=10)
 
+        self.view_mode = tk.StringVar(value="grid")  # grid | list | cards
+
+        ttk.Radiobutton(view_frame, text="Grid", variable=self.view_mode, value="grid", command=self.refresh_manage_tab).pack(side="left", padx=2)
+        ttk.Radiobutton(view_frame, text="Lista", variable=self.view_mode, value="list", command=self.refresh_manage_tab).pack(side="left", padx=2)
+        ttk.Radiobutton(view_frame, text="Cards", variable=self.view_mode, value="cards", command=self.refresh_manage_tab).pack(side="left", padx=2)
+
+        # Botões de exportação e abertura
+        ttk.Button(search_and_view_frame, text="📊 Exportar CSV", command=self.export_csv).pack(side="right", padx=5)
+        ttk.Button(search_and_view_frame, text="📂 Abrir Pasta", command=self.open_target_folder).pack(side="right", padx=5)
+
+        # --- Canvas com scroll para os jogos ---
         self.canvas = tk.Canvas(self.tab_manage, bg=BG_COLOR, highlightthickness=0)
         self.scrollbar = tk.Scrollbar(self.tab_manage, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = tk.Frame(self.canvas, bg=BG_COLOR)
@@ -975,10 +1133,12 @@ class PopsManagerGUI:
         self.canvas.pack(side="left", fill="both", expand=True, padx=5)
         self.scrollbar.pack(side="right", fill="y")
 
+        # Inicializa a interface
+        self.refresh_manage_tab()
+
     def setup_advanced_tab(self):
         frame = ttk.Frame(self.tab_advanced)
         frame.pack(fill="both", expand=True, padx=10, pady=10)
-
         tk.Label(frame, text="🔄 Conversões Avançadas", font=("Arial", 12, "bold")).pack(pady=5)
 
         # --- Arquivo de origem ---
@@ -988,14 +1148,14 @@ class PopsManagerGUI:
         self.advanced_file_label.pack(side="left", padx=5, pady=5)
         ttk.Button(file_frame, text="Selecionar Arquivo", command=self.select_advanced_file).pack(side="left", padx=5, pady=5)
 
-        # --- Formato de saída (com ZSO!) ---
+        # --- Formato de saída ---
         format_frame = ttk.LabelFrame(frame, text="2. Escolha o formato de saída")
         format_frame.pack(fill="x", pady=5)
         self.output_format = tk.StringVar(value="cue_bin")
         formats = [
             ("CUE + BIN", "cue_bin"),
             ("ISO", "iso"),
-            ("ZSO", "zso"),           # ✅ NOVA OPÇÃO
+            ("ZSO", "zso"),
             ("GDI", "gdi"),
             ("CHD", "chd"),
             ("VCD", "vcd"),
@@ -1019,16 +1179,70 @@ class PopsManagerGUI:
         self.advanced_log_text.tag_config("error", foreground=ERROR_COLOR)
         self.advanced_log_text.tag_config("success", foreground=SUCCESS_COLOR)
 
+    def setup_usb_install_tab(self):
+        frame = ttk.Frame(self.tab_usb_install)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        tk.Label(frame, text="🔌 Installs USB", font=("Arial", 14, "bold"), bg=BG_COLOR, fg=ACCENT_COLOR).pack(pady=10)
+
+        desc = tk.Label(
+            frame,
+            text="Copie toda a estrutura da pasta 'usb_install' para seu dispositivo USB.\nTodos os arquivos e pastas serão copiados e ocultados automaticamente.",
+            bg=BG_COLOR, fg=TEXT_COLOR, wraplength=900, justify="center"
+        )
+        desc.pack(pady=5)
+
+        dest_frame = ttk.LabelFrame(frame, text="📂 Selecione o diretório de destino (USB)")
+        dest_frame.pack(fill="x", pady=10, padx=20)
+        self.usb_dest_label = tk.Label(dest_frame, text="Nenhum destino selecionado", bg=BG_COLOR, fg=TEXT_COLOR, anchor="w")
+        self.usb_dest_label.pack(side="left", padx=10, pady=10, fill="x", expand=True)
+        ttk.Button(dest_frame, text="📁 Selecionar Pasta", command=self.select_usb_destination).pack(side="right", padx=10, pady=10)
+
+        origin_frame = ttk.LabelFrame(frame, text="📦 Origem (automática)")
+        origin_frame.pack(fill="x", pady=10, padx=20)
+        script_root = get_script_root()
+        usb_install_path = os.path.join(script_root, "usb_install")
+        self.usb_origin_label = tk.Label(
+            origin_frame,
+            text=f"📂 {usb_install_path}",
+            bg=BG_COLOR, fg="#888", anchor="w", font=("Consolas", 9)
+        )
+        self.usb_origin_label.pack(side="left", padx=10, pady=10, fill="x", expand=True)
+        self.origin_status = tk.Label(
+            origin_frame,
+            text="⏳ Verificando...",
+            bg=BG_COLOR, fg=WARNING_COLOR, font=("Arial", 9, "italic")
+        )
+        self.origin_status.pack(side="right", padx=10, pady=10)
+        self.update_usb_origin_status()
+
+        btn_frame = tk.Frame(frame, bg=BG_COLOR)
+        btn_frame.pack(pady=20)
+        self.install_btn = ttk.Button(
+            btn_frame,
+            text="🚀 Iniciar Instalação USB",
+            command=self.start_usb_install,
+            style="Accent.TButton"
+        )
+        self.install_btn.pack(ipadx=20, ipady=8)
+
+        log_frame = ttk.LabelFrame(frame, text="📝 Log de Operação")
+        log_frame.pack(fill="both", expand=True, pady=10, padx=20)
+        self.usb_log_text = tk.Text(log_frame, height=12, bg="#1b1b1b", fg=TEXT_COLOR, font=("Consolas", 9))
+        self.usb_log_text.pack(fill="both", expand=True, padx=10, pady=10)
+        self.usb_log_text.tag_config("error", foreground=ERROR_COLOR)
+        self.usb_log_text.tag_config("success", foreground=SUCCESS_COLOR)
+        self.usb_log_text.tag_config("warning", foreground=WARNING_COLOR)
+        self.usb_log_text.tag_config("info", foreground="#aaa")
+        self.usb_log_text.insert("1.0", ">>> Aguardando seleção de destino...\n", "info")
+        self.usb_log_text.config(state="disabled")
+
     def setup_console_tab(self):
         frame = ttk.Frame(self.tab_console)
         frame.pack(fill="both", expand=True, padx=10, pady=10)
-
         tk.Label(frame, text="⌨️ Console", font=("Arial", 10, "bold")).pack(anchor="w")
-
         self.console_input = tk.Entry(frame, font=("Consolas", 10))
         self.console_input.pack(fill="x", pady=5)
         self.console_input.bind("<Return>", self.execute_console_command)
-
         self.console_output = tk.Text(frame, height=20, bg="#1e1e1e", fg="#00ff00", font=("Consolas", 10))
         self.console_output.pack(fill="both", expand=True, pady=5)
         self.console_output.insert("1.0", ">>> Console iniciado. Digite 'help'.\n")
@@ -1036,14 +1250,12 @@ class PopsManagerGUI:
     def execute_console_command(self, event=None):
         cmd = self.console_input.get().strip()
         self.console_output.insert("end", f">>> {cmd}\n")
-
         responses = {
             "help": "Comandos: help, clear, list, version",
             "clear": lambda: self.console_output.delete("1.0", "end"),
             "list": lambda: self.list_games_in_console(),
             "version": f"POPStation v{CURRENT_VERSION}"
         }
-
         if cmd in responses:
             if callable(responses[cmd]):
                 responses[cmd]()
@@ -1051,7 +1263,6 @@ class PopsManagerGUI:
                 self.console_output.insert("end", responses[cmd] + "\n")
         else:
             self.console_output.insert("end", "Comando não reconhecido.\n")
-
         self.console_input.delete(0, "end")
         self.console_output.see("end")
 
@@ -1059,12 +1270,10 @@ class PopsManagerGUI:
         if not self.target_dir:
             self.console_output.insert("end", "Nenhuma pasta selecionada.\n")
             return
-
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         if not os.path.exists(conf_file):
             self.console_output.insert("end", "Nenhum jogo encontrado.\n")
             return
-
         with open(conf_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if "=" in line:
@@ -1083,7 +1292,6 @@ class PopsManagerGUI:
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         full_message = f"[{timestamp}] {message}"
         print(full_message)
-
         if advanced:
             tag = "error" if "❌" in message else "success" if "✅" in message else ""
             self.advanced_log_text.insert(tk.END, full_message + "\n", tag)
@@ -1092,11 +1300,9 @@ class PopsManagerGUI:
             tag = "error" if "❌" in message or "Erro" in message else "success" if "✅" in message else "warning" if "⚠️" in message else ""
             self.log_text.insert(tk.END, full_message + "\n", tag)
             self.log_text.see(tk.END)
-
         ensure_dir("logs")
         with open(os.path.join("logs", "popstation.log"), "a", encoding="utf-8") as f:
             f.write(full_message + "\n")
-
         self.status_var.set(message[:50] + "..." if len(message) > 50 else message)
         self.root.update_idletasks()
 
@@ -1107,7 +1313,7 @@ class PopsManagerGUI:
 
     def select_files(self):
         files = filedialog.askopenfilenames(
-            filetypes=[("Jogos PS1/CHD", "*.iso *.bin *.cue *.mdf *.ecm *.img *.chd *.gdi *.zso")]  # ✅ ADICIONADO .ZSO
+            filetypes=[("Jogos PS1/CHD", "*.iso *.bin *.cue *.mdf *.ecm *.img *.chd *.gdi *.zso")]
         )
         if files:
             self.files.extend(files)
@@ -1196,13 +1402,11 @@ class PopsManagerGUI:
             game_name = os.path.splitext(os.path.basename(f))[0]
             cover_path = self.covers.get(game_name)
             logo_path = self.logos.get(game_name)
-
             if process_game(f, pops_dir, self.target_dir, cover_path, logo_path, self.log, self.update_progress):
                 success_count += 1
 
         self.update_progress("✅ Concluído!", total * 100)
         self.log(f"🎉 {success_count}/{total} jogos processados!", "success")
-
         try:
             winsound.PlaySound(os.path.join(script_root, "success.wav"), winsound.SND_ASYNC)
         except:
@@ -1216,12 +1420,15 @@ class PopsManagerGUI:
         self.refresh_manage_tab()
 
     def refresh_manage_tab(self):
+        """Atualiza a lista de jogos com base no modo de exibição e no filtro de busca."""
         self.cover_images.clear()
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
         self.game_tiles = {}
 
         if not self.target_dir:
+            self.games_count_label.config(text="🔍 Jogos: 0")
+            self.disk_usage_label.config(text="💾 Uso: -- / -- (---% livre)")
             return
 
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
@@ -1229,155 +1436,283 @@ class PopsManagerGUI:
         pops_dir = os.path.join(self.target_dir, POPS_DIR_NAME)
 
         if not os.path.exists(conf_file):
+            self.games_count_label.config(text="🔍 Jogos: 0")
+            self.disk_usage_label.config(text=f"💾 Uso: -- / -- (---% livre)")
             return
 
+        # Coleta jogos válidos
         games = []
         with open(conf_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if "=" in line:
                     game_key, elf = line.strip().split("=", 1)
-                    elf_path = os.path.join(self.target_dir, os.path.basename(elf.replace("mass:/", "")))
                     elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
                     if not elf_name_no_ext:
                         continue
-
-                    vcd_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
-                    valid_game = os.path.exists(vcd_path) or any(
-                        os.path.exists(os.path.join(pops_dir, f"{elf_name_no_ext}{ext}")) for ext in SUPPORTED_FORMATS
+                    valid_game = any(
+                        os.path.exists(os.path.join(pops_dir, f"{elf_name_no_ext}{ext}")) 
+                        for ext in SUPPORTED_FORMATS + [".VCD"]
                     )
-                    if not valid_game:
-                        continue
+                    if valid_game:
+                        games.append(game_key)
 
-                    cover_path = logo_path = None
-                    for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
-                        test_cover = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_COV{ext}")
-                        test_logo = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_LGO{ext}")
-                        if os.path.exists(test_cover):
-                            cover_path = test_cover
-                        if os.path.exists(test_logo):
-                            logo_path = test_logo
+        # Ordena alfabeticamente (ignorando case)
+        games.sort(key=str.lower)
 
-                    games.append((game_key, elf_path, vcd_path, cover_path, logo_path, elf_name_no_ext))
+        # Aplica filtro de busca
+        search_text = self.search_var.get().lower().strip()
+        if search_text:
+            games = [g for g in games if search_text in g.lower()]
 
-        games.sort(key=lambda x: x[0].lower())
+        count = len(games)
+        self.games_count_label.config(text=f"🔍 Jogos: {count}")
 
-        search_text = self.search_var.get().lower()
-        columns = 5
-        idx = 0
+        # Calcula uso de disco
+        try:
+            usage = shutil.disk_usage(self.target_dir)
+            total_gb = usage.total / (1024**3)
+            used_gb = usage.used / (1024**3)
+            free_gb = usage.free / (1024**3)
+            percent_used = (used_gb / total_gb) * 100 if total_gb > 0 else 0
+            self.disk_usage_label.config(
+                text=f"💾 Uso: {used_gb:.1f} GB / {total_gb:.1f} GB ({free_gb:.1f} GB livre)"
+            )
+        except Exception as e:
+            self.disk_usage_label.config(text=f"💾 Uso: ❌ Não acessível ({str(e)})")
 
-        for game_key, elf_path, vcd_path, cover_path, logo_path, elf_name_no_ext in games:
-            if search_text and search_text not in game_key.lower() and search_text not in elf_name_no_ext.lower():
-                continue
+        # --- RENDERIZAÇÃO BASEADA NO MODO DE EXIBIÇÃO ---
+        mode = self.view_mode.get()
 
-            frame = tk.Frame(self.scrollable_frame, bg=TILE_BG, padx=5, pady=5, relief="raised", bd=1)
-            frame.grid(row=idx // columns, column=idx % columns, padx=10, pady=10, sticky="n")
-            self.game_tiles[game_key] = frame
-            idx += 1
+        if mode == "list":
+            # Modo Lista: Tabela com colunas
+            headers = ["Nome do Jogo", "Arquivo ELF", "Status"]
+            for col, header in enumerate(headers):
+                tk.Label(
+                    self.scrollable_frame,
+                    text=header,
+                    bg=TILE_BG,
+                    fg=ACCENT_COLOR,
+                    font=("Arial", 9, "bold"),
+                    anchor="w",
+                    relief="raised",
+                    padx=8,
+                    pady=5
+                ).grid(row=0, column=col, sticky="ew", padx=1, pady=1)
 
-            if cover_path and os.path.exists(cover_path):
-                try:
-                    img = Image.open(cover_path)
-                    img.thumbnail(COVER_SIZE)
-                    photo = ImageTk.PhotoImage(img)
-                    self.cover_images[cover_path] = photo
-                    lbl_cover = tk.Label(frame, image=photo, bg=TILE_BG)
+            for idx, game_key in enumerate(games, start=1):
+                elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
+                elf_name = f"XX.{elf_name_no_ext}.ELF"
+                vcd_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
+                status = "✅ VCD" if os.path.exists(vcd_path) else "⚠️ Ausente"
+
+                # Linha da tabela
+                tk.Label(self.scrollable_frame, text=game_key, bg=BG_COLOR, fg=TEXT_COLOR, anchor="w", font=("Arial", 9)).grid(row=idx, column=0, sticky="ew", padx=1, pady=1)
+                tk.Label(self.scrollable_frame, text=elf_name, bg=BG_COLOR, fg=TEXT_COLOR, anchor="w", font=("Arial", 9)).grid(row=idx, column=1, sticky="ew", padx=1, pady=1)
+                tk.Label(self.scrollable_frame, text=status, bg=BG_COLOR, fg=SUCCESS_COLOR if status == "✅ VCD" else WARNING_COLOR, anchor="w", font=("Arial", 9)).grid(row=idx, column=2, sticky="ew", padx=1, pady=1)
+
+                # Menu contextual
+                menu = tk.Menu(self.root, tearoff=0)
+                menu.add_command(label="✏️ Renomear", command=lambda g=game_key: self.rename_game(g))
+                menu.add_command(label="🗑️ Apagar", command=lambda g=game_key: self.delete_game(g))
+                menu.add_command(label="🖼️ Atualizar Capa", command=lambda g=game_key: self.update_cover(g))
+                menu.add_command(label="🔖 Atualizar Logo", command=lambda g=game_key: self.update_logo(g))
+                menu.add_separator()
+                menu.add_command(label="💿 Converter para CUE+BIN", command=lambda g=game_key: self.convert_game_to_cue_bin(g))
+                menu.add_command(label="📀 Converter para ISO", command=lambda g=game_key: self.convert_game_to_iso(g))
+
+                row_frame = tk.Frame(self.scrollable_frame, bg=BG_COLOR)
+                row_frame.grid(row=idx, column=0, columnspan=3, sticky="ew", padx=1, pady=1)
+                row_frame.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
+                for child in row_frame.winfo_children():
+                    child.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
+
+        elif mode == "cards":
+            # Modo Cards: Visualização tipo "cartão" com imagem menor
+            columns = 4
+            idx = 0
+            for game_key in games:
+                frame = tk.Frame(self.scrollable_frame, bg=TILE_BG, padx=8, pady=8, relief="raised", bd=1, width=180, height=200)
+                frame.grid_propagate(False)
+                frame.grid(row=idx // columns, column=idx % columns, padx=10, pady=10, sticky="n")
+                self.game_tiles[game_key] = frame
+                idx += 1
+
+                elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
+                cover_path = None
+                logo_path = None
+
+                for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
+                    test_cover = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_COV{ext}")
+                    test_logo = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_LGO{ext}")
+                    if os.path.exists(test_cover):
+                        cover_path = test_cover
+                    if os.path.exists(test_logo):
+                        logo_path = test_logo
+
+                # Imagem da capa (miniatura)
+                if cover_path and os.path.exists(cover_path):
+                    try:
+                        img = Image.open(cover_path)
+                        img.thumbnail((120, 120))
+                        photo = ImageTk.PhotoImage(img)
+                        self.cover_images[cover_path] = photo
+                        lbl_cover = tk.Label(frame, image=photo, bg=TILE_BG)
+                        lbl_cover.pack(pady=2)
+                        ImageTooltip(lbl_cover, cover_path, PREVIEW_SIZE)
+                    except Exception as e:
+                        self.log(f"Erro ao carregar capa {cover_path}: {e}", "error")
+                        lbl_cover = tk.Label(frame, text="❌ Capa", width=15, height=7, bg=TILE_BG, fg="red")
+                        lbl_cover.pack(pady=2)
+                else:
+                    lbl_cover = tk.Label(frame, text="Sem capa", width=15, height=7, bg=TILE_BG, fg=TEXT_COLOR)
                     lbl_cover.pack(pady=2)
-                    ImageTooltip(lbl_cover, cover_path, PREVIEW_SIZE)
-                except Exception as e:
-                    self.log(f"Erro ao carregar capa {cover_path}: {e}", "error")
-                    lbl_cover = tk.Label(frame, text="Erro na capa", width=15, height=7, bg=TILE_BG, fg="red")
+
+                # Nome do jogo
+                tk.Label(frame, text=game_key, bg=TILE_BG, fg=TEXT_COLOR, wraplength=160, font=("Arial", 9, "bold")).pack(pady=2)
+
+                # Status
+                vcd_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
+                status = "✅" if os.path.exists(vcd_path) else "❌"
+                tk.Label(frame, text=status, bg=TILE_BG, fg=SUCCESS_COLOR if status == "✅" else ERROR_COLOR, font=("Arial", 8)).pack(pady=1)
+
+                # Menu contextual
+                menu = tk.Menu(self.root, tearoff=0)
+                menu.add_command(label="✏️ Renomear", command=lambda g=game_key: self.rename_game(g))
+                menu.add_command(label="🗑️ Apagar", command=lambda g=game_key: self.delete_game(g))
+                menu.add_command(label="🖼️ Atualizar Capa", command=lambda g=game_key: self.update_cover(g))
+                menu.add_command(label="🔖 Atualizar Logo", command=lambda g=game_key: self.update_logo(g))
+                menu.add_separator()
+                menu.add_command(label="💿 Converter para CUE+BIN", command=lambda g=game_key: self.convert_game_to_cue_bin(g))
+                menu.add_command(label="📀 Converter para ISO", command=lambda g=game_key: self.convert_game_to_iso(g))
+
+                frame.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
+                for child in frame.winfo_children():
+                    child.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
+
+        else:  # mode == "grid" (padrão)
+            # Modo Grid: Layout clássico com capas grandes
+            columns = 5
+            idx = 0
+            for game_key in games:
+                frame = tk.Frame(self.scrollable_frame, bg=TILE_BG, padx=5, pady=5, relief="raised", bd=1)
+                frame.grid(row=idx // columns, column=idx % columns, padx=10, pady=10, sticky="n")
+                self.game_tiles[game_key] = frame
+                idx += 1
+
+                elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
+                cover_path = None
+                logo_path = None
+
+                for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
+                    test_cover = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_COV{ext}")
+                    test_logo = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_LGO{ext}")
+                    if os.path.exists(test_cover):
+                        cover_path = test_cover
+                    if os.path.exists(test_logo):
+                        logo_path = test_logo
+
+                # Capa
+                if cover_path and os.path.exists(cover_path):
+                    try:
+                        img = Image.open(cover_path)
+                        img.thumbnail(COVER_SIZE)
+                        photo = ImageTk.PhotoImage(img)
+                        self.cover_images[cover_path] = photo
+                        lbl_cover = tk.Label(frame, image=photo, bg=TILE_BG)
+                        lbl_cover.pack(pady=2)
+                        ImageTooltip(lbl_cover, cover_path, PREVIEW_SIZE)
+                    except Exception as e:
+                        self.log(f"Erro ao carregar capa {cover_path}: {e}", "error")
+                        lbl_cover = tk.Label(frame, text="Erro na capa", width=15, height=7, bg=TILE_BG, fg="red")
+                        lbl_cover.pack(pady=2)
+                else:
+                    lbl_cover = tk.Label(frame, text="Sem capa", width=15, height=7, bg=TILE_BG, fg=TEXT_COLOR)
                     lbl_cover.pack(pady=2)
-            else:
-                lbl_cover = tk.Label(frame, text="Sem capa", width=15, height=7, bg=TILE_BG, fg=TEXT_COLOR)
-                lbl_cover.pack(pady=2)
 
-            if logo_path and os.path.exists(logo_path):
-                try:
-                    img = Image.open(logo_path)
-                    img.thumbnail(LOGO_SIZE)
-                    photo = ImageTk.PhotoImage(img)
-                    self.cover_images[logo_path] = photo
-                    lbl_logo = tk.Label(frame, image=photo, bg=TILE_BG)
-                    lbl_logo.pack(pady=2)
-                    ImageTooltip(lbl_logo, logo_path, PREVIEW_SIZE)
-                except:
-                    pass
+                # Logo (pequeno)
+                if logo_path and os.path.exists(logo_path):
+                    try:
+                        img = Image.open(logo_path)
+                        img.thumbnail(LOGO_SIZE)
+                        photo = ImageTk.PhotoImage(img)
+                        self.cover_images[logo_path] = photo
+                        lbl_logo = tk.Label(frame, image=photo, bg=TILE_BG)
+                        lbl_logo.pack(pady=2)
+                        ImageTooltip(lbl_logo, logo_path, PREVIEW_SIZE)
+                    except:
+                        pass
 
-            tk.Label(frame, text=game_key, bg=TILE_BG, fg=TEXT_COLOR, wraplength=120, font=("Arial", 9, "bold")).pack()
-            tk.Label(frame, text=os.path.basename(elf_path), bg=TILE_BG, fg=TEXT_COLOR, font=("Arial", 8)).pack()
-            tk.Label(frame, text=os.path.basename(vcd_path) if os.path.exists(vcd_path) else "VCD ausente", bg=TILE_BG, fg=TEXT_COLOR, font=("Arial", 8)).pack()
+                # Nome do jogo
+                tk.Label(frame, text=game_key, bg=TILE_BG, fg=TEXT_COLOR, wraplength=150, font=("Arial", 9, "bold")).pack()
 
-            menu = tk.Menu(self.root, tearoff=0)
-            menu.add_command(label="✏️ Renomear", command=lambda g=game_key: self.rename_game(g))
-            menu.add_command(label="🗑️ Apagar", command=lambda g=game_key: self.delete_game(g))
-            menu.add_command(label="🖼️ Atualizar Capa", command=lambda g=game_key: self.update_cover(g))
-            menu.add_command(label="🔖 Atualizar Logo", command=lambda g=game_key: self.update_logo(g))
-            menu.add_separator()
-            menu.add_command(label="💿 Converter para CUE+BIN", command=lambda g=game_key: self.convert_game_to_cue_bin(g))
-            menu.add_command(label="📀 Converter para ISO", command=lambda g=game_key: self.convert_game_to_iso(g))
-            frame.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
-            for child in frame.winfo_children():
-                child.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
+                # Arquivo ELF
+                tk.Label(frame, text=os.path.basename(get_elf_name_from_game_key(game_key, self.target_dir)) + ".ELF", bg=TILE_BG, fg=TEXT_COLOR, font=("Arial", 8)).pack()
+
+                # Status VCD
+                vcd_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
+                tk.Label(frame, text=os.path.basename(vcd_path) if os.path.exists(vcd_path) else "VCD ausente", bg=TILE_BG, fg=TEXT_COLOR, font=("Arial", 8)).pack()
+
+                # Menu contextual
+                menu = tk.Menu(self.root, tearoff=0)
+                menu.add_command(label="✏️ Renomear", command=lambda g=game_key: self.rename_game(g))
+                menu.add_command(label="🗑️ Apagar", command=lambda g=game_key: self.delete_game(g))
+                menu.add_command(label="🖼️ Atualizar Capa", command=lambda g=game_key: self.update_cover(g))
+                menu.add_command(label="🔖 Atualizar Logo", command=lambda g=game_key: self.update_logo(g))
+                menu.add_separator()
+                menu.add_command(label="💿 Converter para CUE+BIN", command=lambda g=game_key: self.convert_game_to_cue_bin(g))
+                menu.add_command(label="📀 Converter para ISO", command=lambda g=game_key: self.convert_game_to_iso(g))
+
+                frame.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
+                for child in frame.winfo_children():
+                    child.bind("<Button-3>", lambda e, m=menu: m.tk_popup(e.x_root, e.y_root))
 
     def rename_game(self, game_key):
         new_name = simpledialog.askstring("Renomear", f"Novo nome para '{game_key}':")
         if not new_name or not self.target_dir:
             return
-
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         if not os.path.exists(conf_file):
             return
-
         backup_conf_file(self.target_dir)
         with open(conf_file, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-
         with open(conf_file, 'w', encoding='utf-8') as f:
             for line in lines:
                 if line.startswith(game_key + "="):
                     f.write(line.replace(game_key, new_name, 1))
                 else:
                     f.write(line)
-
         self.log(f"✏️ Renomeado: {game_key} → {new_name}", "success")
         self.refresh_manage_tab()
 
     def delete_game(self, game_key):
         if not messagebox.askyesno("⚠️ Confirmação", f"Apagar '{game_key}'?"):
             return
-
         if not self.target_dir:
             return
-
         elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
         if not elf_name_no_ext:
             messagebox.showerror("❌ Erro", f"ELF não encontrado para '{game_key}'")
             return
-
         backup_conf_file(self.target_dir)
         pops_dir = os.path.join(self.target_dir, POPS_DIR_NAME)
         art_dir = os.path.join(self.target_dir, ART_DIR_NAME)
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         save_folder = os.path.join(pops_dir, elf_name_no_ext)
-
         if os.path.exists(save_folder):
             shutil.rmtree(save_folder)
-
         elf_path = os.path.join(self.target_dir, f"XX.{elf_name_no_ext}.ELF")
         if os.path.exists(elf_path):
             os.remove(elf_path)
-
         for ext in SUPPORTED_FORMATS + [".VCD"]:
             path = os.path.join(pops_dir, f"{elf_name_no_ext}{ext}")
             if os.path.exists(path):
                 os.remove(path)
-
         for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
             for prefix in [".ELF_COV", ".ELF_LGO"]:
                 file_path = os.path.join(art_dir, f"XX.{elf_name_no_ext}{prefix}{ext}")
                 if os.path.exists(file_path):
                     os.remove(file_path)
-
         if os.path.exists(conf_file):
             with open(conf_file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
@@ -1385,7 +1720,6 @@ class PopsManagerGUI:
                 for line in lines:
                     if not line.startswith(game_key + "="):
                         f.write(line)
-
         self.log(f"🗑️ Jogo '{game_key}' removido.", "success")
         messagebox.showinfo("✅ Sucesso", f"'{game_key}' removido.")
         self.refresh_manage_tab()
@@ -1397,12 +1731,10 @@ class PopsManagerGUI:
         )
         if not cover_path or not self.target_dir:
             return
-
         elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
         if not elf_name_no_ext:
             messagebox.showerror("❌ Erro", f"ELF não encontrado para '{game_key}'")
             return
-
         art_dir = os.path.join(self.target_dir, ART_DIR_NAME)
         saved_cover = save_cover(elf_name_no_ext, art_dir, cover_path)
         self.log(f"🖼️ Capa atualizada: {saved_cover}", "success")
@@ -1415,48 +1747,38 @@ class PopsManagerGUI:
         )
         if not logo_path or not self.target_dir:
             return
-
         elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
         if not elf_name_no_ext:
             messagebox.showerror("❌ Erro", f"ELF não encontrado para '{game_key}'")
             return
-
         art_dir = os.path.join(self.target_dir, ART_DIR_NAME)
         saved_logo = save_logo(elf_name_no_ext, art_dir, logo_path)
         self.log(f"🔖 Logo atualizado: {saved_logo}", "success")
         self.refresh_manage_tab()
 
-    # ✅ ✅ ✅ MÉTODO ATUALIZADO: Converte VCD → CUE+BIN e DELETA o VCD temporário
     def convert_game_to_cue_bin(self, game_key):
         elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
         if not elf_name_no_ext:
             messagebox.showerror("Erro", f"ELF não encontrado para '{game_key}'")
             return
-
         pops_dir = os.path.join(self.target_dir, POPS_DIR_NAME)
         source_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
         if not os.path.exists(source_path):
             messagebox.showerror("Erro", f".VCD não encontrado para '{game_key}'")
             return
-
         output_dir = filedialog.askdirectory(title="Salvar CUE+BIN")
         if not output_dir:
             return
-
         temp_vcd = os.path.join(output_dir, os.path.basename(source_path))
         shutil.copy2(source_path, temp_vcd)
-
         if convert_vcd_to_cue_bin_with_pops2cue(temp_vcd, log_callback=self.log):
             output_cue = os.path.splitext(temp_vcd)[0] + ".cue"
             output_bin = os.path.splitext(temp_vcd)[0] + ".bin"
-
-            # ✅ DELETA O ARQUIVO VCD TEMPORÁRIO
             try:
                 os.remove(temp_vcd)
                 self.log(f"🗑️ Arquivo temporário deletado: {os.path.basename(temp_vcd)}", "success")
             except Exception as e:
                 self.log(f"⚠️ Não foi possível deletar o VCD temporário: {e}", "warning")
-
             messagebox.showinfo("Sucesso", f"Arquivos gerados:\n{output_cue}\n{output_bin}")
         else:
             messagebox.showerror("Erro", "Falha na conversão.")
@@ -1466,17 +1788,14 @@ class PopsManagerGUI:
         if not elf_name_no_ext:
             messagebox.showerror("Erro", f"ELF não encontrado para '{game_key}'")
             return
-
         pops_dir = os.path.join(self.target_dir, POPS_DIR_NAME)
         source_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
         if not os.path.exists(source_path):
             messagebox.showerror("Erro", f".VCD não encontrado para '{game_key}'")
             return
-
         output_dir = filedialog.askdirectory(title="Salvar ISO")
         if not output_dir:
             return
-
         output_iso = os.path.join(output_dir, f"{game_key}.iso")
         if convert_vcd_to_iso(source_path, output_iso, log_callback=self.log):
             messagebox.showinfo("Sucesso", f"Salvo em:\n{output_iso}")
@@ -1487,12 +1806,10 @@ class PopsManagerGUI:
         if not self.target_dir:
             messagebox.showwarning("⚠️ Aviso", "Nenhuma pasta selecionada!")
             return
-
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         if not os.path.exists(conf_file):
             messagebox.showwarning("⚠️ Aviso", "Nenhum jogo encontrado!")
             return
-
         games = []
         with open(conf_file, 'r', encoding='utf-8') as f:
             for line in f:
@@ -1500,16 +1817,13 @@ class PopsManagerGUI:
                     game_key, elf = line.strip().split("=", 1)
                     elf_name = os.path.basename(elf.replace("mass:/", ""))
                     games.append([game_key, elf_name])
-
         export_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")], initialfile="jogos.csv")
         if not export_path:
             return
-
         with open(export_path, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["Nome do Jogo", "Arquivo ELF"])
             writer.writerows(games)
-
         self.log(f"📊 Exportado: {export_path}", "success")
         messagebox.showinfo("✅ Sucesso", f"Exportado para:\n{export_path}")
 
@@ -1517,12 +1831,10 @@ class PopsManagerGUI:
         if not self.target_dir:
             messagebox.showwarning("⚠️ Aviso", "Nenhuma pasta selecionada!")
             return
-
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         if not os.path.exists(conf_file):
             messagebox.showwarning("⚠️ Aviso", "Nenhum jogo encontrado!")
             return
-
         games = []
         with open(conf_file, 'r', encoding='utf-8') as f:
             for line in f:
@@ -1530,20 +1842,15 @@ class PopsManagerGUI:
                     game_key, elf = line.strip().split("=", 1)
                     elf_name = os.path.basename(elf.replace("mass:/", ""))
                     games.append({"name": game_key, "elf": elf_name})
-
         html = f"""<!DOCTYPE html><html><head><title>Jogos POPStarter</title><meta charset="UTF-8"><style>body{{font-family:Arial,sans-serif;background:#222;color:#eee;margin:40px;}}h1{{color:#4a90e2;}}table{{width:100%;border-collapse:collapse;margin-top:20px;}}th,td{{padding:12px;border:1px solid #444;text-align:left;}}th{{background:#333;}}tr:nth-child(even){{background:#2a2a2a;}}</style></head><body><h1>🎮 Lista de Jogos</h1><p>Gerado em: {datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")}</p><table><tr><th>Nome do Jogo</th><th>Arquivo ELF</th></tr>"""
-
         for game in games:
             html += f"<tr><td>{game['name']}</td><td>{game['elf']}</td></tr>"
         html += "</table></body></html>"
-
         export_path = filedialog.asksaveasfilename(defaultextension=".html", filetypes=[("HTML", "*.html")], initialfile="jogos.html")
         if not export_path:
             return
-
         with open(export_path, 'w', encoding='utf-8') as f:
             f.write(html)
-
         self.log(f"📊 Exportado: {export_path}", "success")
         messagebox.showinfo("✅ Sucesso", f"Exportado para:\n{export_path}")
 
@@ -1551,13 +1858,11 @@ class PopsManagerGUI:
         if not self.target_dir:
             messagebox.showwarning("⚠️ Aviso", "Nenhuma pasta!")
             return
-
         self.log("🔍 Verificando integridade...", "warning")
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         if not os.path.exists(conf_file):
             self.log("❌ conf_apps.cfg não encontrado.", "error")
             return
-
         pops_dir = os.path.join(self.target_dir, POPS_DIR_NAME)
         with open(conf_file, 'r', encoding='utf-8') as f:
             for line in f:
@@ -1571,7 +1876,6 @@ class PopsManagerGUI:
                     vcd_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
                     if not os.path.exists(vcd_path):
                         self.log(f"⚠️ VCD ausente: {elf_name_no_ext}", "warning")
-
         self.log("✅ Verificação concluída!", "success")
         messagebox.showinfo("✅ Concluído", "Verificação finalizada!")
 
@@ -1605,44 +1909,9 @@ class PopsManagerGUI:
     def show_about(self):
         messagebox.showinfo("Sobre", f"POPStation v{CURRENT_VERSION}\nGerenciador POPStarter Ultimate para PS2.\nDesenvolvido para a comunidade PS2 Homebrew.\nPressione Ctrl+Shift+R para modo RETRO!")
 
-    def delete_all_games(self):
-        if not self.target_dir or not messagebox.askyesno("⚠️ Confirmação", "Apagar TODOS os jogos?"):
-            return
-
-        backup_conf_file(self.target_dir)
-        pops_dir = os.path.join(self.target_dir, POPS_DIR_NAME)
-        art_dir = os.path.join(self.target_dir, ART_DIR_NAME)
-        conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
-
-        if os.path.exists(pops_dir):
-            for item in os.listdir(pops_dir):
-                path = os.path.join(pops_dir, item)
-                if os.path.isdir(path):
-                    shutil.rmtree(path)
-                elif any(item.endswith(ext) for ext in SUPPORTED_FORMATS + [".VCD"]):
-                    os.remove(path)
-
-        if os.path.exists(art_dir):
-            for item in os.listdir(art_dir):
-                if item.endswith((".ELF_COV", ".ELF_LGO")):
-                    for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
-                        fp = os.path.join(art_dir, item + ext)
-                        if os.path.exists(fp): os.remove(fp)
-
-        for file in os.listdir(self.target_dir):
-            if file.endswith(".ELF") and file not in ["POPSTARTER.ELF", "POPS.ELF"]:
-                os.remove(os.path.join(self.target_dir, file))
-
-        if os.path.exists(conf_file):
-            os.remove(conf_file)
-
-        self.log("🗑️ Todos os jogos removidos.", "success")
-        messagebox.showinfo("✅ Sucesso", "Todos os jogos foram removidos!")
-        self.refresh_manage_tab()
-
     def select_advanced_file(self):
         file_path = filedialog.askopenfilename(
-            filetypes=[("Todos formatos suportados", "*.chd *.cue *.bin *.iso *.vcd *.gdi *.zso")]  # ✅ ADICIONADO .ZSO
+            filetypes=[("Todos formatos suportados", "*.chd *.cue *.bin *.iso *.vcd *.gdi *.zso")]
         )
         if file_path:
             self.advanced_files = [file_path]
@@ -1656,7 +1925,6 @@ class PopsManagerGUI:
             self.advanced_output_label.config(text=f"Pasta: {folder}")
             self.log(f"📁 Pasta de saída selecionada: {folder}", advanced=True)
 
-    # ✅ ✅ ✅ MÉTODO ATUALIZADO: Conversão Avançada com suporte a ISO ↔ ZSO
     def start_advanced_conversion(self):
         if not hasattr(self, 'advanced_files') or not self.advanced_files:
             messagebox.showwarning("Aviso", "Selecione um arquivo de origem!")
@@ -1664,21 +1932,17 @@ class PopsManagerGUI:
         if not hasattr(self, 'advanced_output_folder'):
             messagebox.showwarning("Aviso", "Selecione uma pasta de saída!")
             return
-
         input_file = self.advanced_files[0]
         output_format = self.output_format.get()
         input_ext = os.path.splitext(input_file)[1].lower()
         base_name = os.path.splitext(os.path.basename(input_file))[0]
-
         script_root = get_script_root()
         chdman_path = os.path.join(script_root, CHDMAN_EXE)
         cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
         pops2cue_path = os.path.join(script_root, POPS2CUE_EXE)
         vcd2iso_path = os.path.join(script_root, VCD2ISO_EXE)
-        ziso_path = os.path.join(script_root, ZISO_EXE)  # ✅ NOVA CONSTANTE
-
+        ziso_path = os.path.join(script_root, ZISO_EXE)
         try:
-            # ✅ CONVERSÃO PARA CHD
             if output_format == "chd" and input_ext in [".cue", ".iso", ".gdi"]:
                 if not os.path.exists(chdman_path):
                     self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
@@ -1686,8 +1950,6 @@ class PopsManagerGUI:
                 output_chd = os.path.join(self.advanced_output_folder, f"{base_name}.chd")
                 if convert_to_chd(input_file, output_chd, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ CHD salvo: {output_chd}", "success", advanced=True)
-
-            # ✅ CHD → CUE+BIN
             elif input_ext == ".chd" and output_format == "cue_bin":
                 if not os.path.exists(chdman_path):
                     self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
@@ -1710,8 +1972,6 @@ class PopsManagerGUI:
                     self.log("❌ Falha na extração do CHD.", "error", advanced=True)
                 if 'temp_dir' in locals() and temp_dir:
                     shutil.rmtree(temp_dir, ignore_errors=True)
-
-            # ✅ CHD → GDI
             elif input_ext == ".chd" and output_format == "gdi":
                 if not os.path.exists(chdman_path):
                     self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
@@ -1719,8 +1979,6 @@ class PopsManagerGUI:
                 output_gdi = os.path.join(self.advanced_output_folder, f"{base_name}.gdi")
                 if convert_chd_to_gdi(input_file, output_gdi, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ GDI salvo: {output_gdi}", "success", advanced=True)
-
-            # ✅ CHD → ISO
             elif input_ext == ".chd" and output_format == "iso":
                 if not os.path.exists(chdman_path):
                     self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
@@ -1728,8 +1986,6 @@ class PopsManagerGUI:
                 output_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
                 if convert_chd_to_iso_only(input_file, output_iso, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
-
-            # ✅ CUE → VCD (com verificação de .bin)
             elif input_ext == ".cue" and output_format == "vcd":
                 if not os.path.exists(cue2pops_path):
                     self.log(f"❌ {CUE2POPS_EXE} não encontrado!", "error", advanced=True)
@@ -1742,15 +1998,11 @@ class PopsManagerGUI:
                 output_path = os.path.join(self.advanced_output_folder, f"{base_name}.vcd")
                 if convert_cue_to_vcd(input_file, output_path, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ VCD salvo: {output_path}", "success", advanced=True)
-
-            # ✅ ISO/BIN → VCD (cópia direta)
             elif input_ext in [".iso", ".bin"] and output_format == "vcd":
                 self.log(f"▶️ Convertendo {os.path.basename(input_file)} para VCD...", advanced=True)
                 output_path = os.path.join(self.advanced_output_folder, f"{base_name}.vcd")
                 convert_to_vcd(input_file, output_path, lambda msg: self.log(msg, advanced=True))
                 self.log(f"✅ VCD salvo: {output_path}", "success", advanced=True)
-
-            # ✅ ✅ ✅ VCD → CUE+BIN (com POPS2CUE.EXE) - DELETA VCD TEMPORÁRIO
             elif input_ext == ".vcd" and output_format == "cue_bin":
                 if not os.path.exists(pops2cue_path):
                     self.log(f"❌ {POPS2CUE_EXE} não encontrado!", "error", advanced=True)
@@ -1764,7 +2016,6 @@ class PopsManagerGUI:
                     self.log(f"✅ CUE+BIN salvos em: {self.advanced_output_folder}", "success", advanced=True)
                     self.log(f"   {os.path.basename(output_cue)}", "success", advanced=True)
                     self.log(f"   {os.path.basename(output_bin)}", "success", advanced=True)
-                    # ✅ DELETA O ARQUIVO VCD TEMPORÁRIO
                     try:
                         os.remove(temp_vcd)
                         self.log(f"🗑️ Arquivo temporário deletado: {os.path.basename(temp_vcd)}", "success", advanced=True)
@@ -1772,8 +2023,6 @@ class PopsManagerGUI:
                         self.log(f"⚠️ Não foi possível deletar o VCD temporário: {e}", "warning", advanced=True)
                 else:
                     self.log("❌ Falha na conversão com POPS2CUE.EXE.", "error", advanced=True)
-
-            # ✅ VCD → ISO
             elif input_ext == ".vcd" and output_format == "iso":
                 if not os.path.exists(vcd2iso_path):
                     self.log(f"❌ {VCD2ISO_EXE} não encontrado!", "error", advanced=True)
@@ -1782,8 +2031,6 @@ class PopsManagerGUI:
                 output_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
                 if convert_vcd_to_iso(input_file, output_iso, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
-
-            # ✅ ✅ ✅ ISO → ZSO
             elif input_ext == ".iso" and output_format == "zso":
                 if not os.path.exists(ziso_path):
                     self.log(f"❌ {ZISO_EXE} não encontrado! Certifique-se de que está na pasta do script.", "error", advanced=True)
@@ -1794,8 +2041,6 @@ class PopsManagerGUI:
                     self.log(f"✅ ZSO salvo: {output_zso}", "success", advanced=True)
                 else:
                     self.log("❌ Falha na conversão ISO → ZSO.", "error", advanced=True)
-
-            # ✅ ✅ ✅ ZSO → ISO
             elif input_ext == ".zso" and output_format == "iso":
                 if not os.path.exists(ziso_path):
                     self.log(f"❌ {ZISO_EXE} não encontrado! Certifique-se de que está na pasta do script.", "error", advanced=True)
@@ -1806,19 +2051,151 @@ class PopsManagerGUI:
                     self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
                 else:
                     self.log("❌ Falha na conversão ZSO → ISO.", "error", advanced=True)
-
             else:
                 self.log("❌ Conversão não suportada para esta combinação.", "error", advanced=True)
                 return
-
-            # ✅ TOCA SOM AO FINALIZAR (só se não houve erro)
             try:
                 winsound.PlaySound(os.path.join(script_root, "success.wav"), winsound.SND_ASYNC)
             except:
                 pass
-
         except Exception as e:
             self.log(f"❌ Erro: {e}", "error", advanced=True)
+
+    def update_usb_origin_status(self):
+        script_root = get_script_root()
+        usb_install_path = os.path.join(script_root, "usb_install")
+        if os.path.exists(usb_install_path) and os.listdir(usb_install_path):
+            self.origin_status.config(text="✅ Pronto!", fg=SUCCESS_COLOR)
+        elif os.path.exists(usb_install_path):
+            self.origin_status.config(text="⚠️ Pasta vazia!", fg=WARNING_COLOR)
+        else:
+            self.origin_status.config(text="❌ Pasta 'usb_install' não encontrada!", fg=ERROR_COLOR)
+
+    def select_usb_destination(self):
+        folder = filedialog.askdirectory(title="Selecione a pasta de destino no USB")
+        if not folder:
+            return
+        self.usb_dest = folder
+        self.usb_dest_label.config(text=f"📁 {folder}")
+        self.usb_log_text.config(state="normal")
+        self.usb_log_text.delete("1.0", tk.END)
+        self.usb_log_text.insert("1.0", f">>> Destino selecionado: {folder}\n", "info")
+        self.usb_log_text.config(state="disabled")
+        self.log_usb(f"🔌 Destino USB definido: {folder}", "info")
+
+    def start_usb_install(self):
+        if not hasattr(self, 'usb_dest') or not self.usb_dest:
+            messagebox.showwarning("⚠️ Aviso", "Por favor, selecione um destino no USB!")
+            return
+        script_root = get_script_root()
+        usb_install_path = os.path.join(script_root, "usb_install")
+        if not os.path.exists(usb_install_path):
+            self.log_usb("❌ Pasta 'usb_install' não existe no diretório do script!", "error")
+            return
+        items = os.listdir(usb_install_path)
+        if not items:
+            self.log_usb("⚠️ A pasta 'usb_install' está vazia. Nada para copiar.", "warning")
+            return
+        total_items = len(items)
+        self.log_usb(f"🚀 Iniciando instalação USB... ({total_items} itens)", "info")
+        success_count = 0
+        failed_count = 0
+        skipped_count = 0
+        for item in items:
+            src = os.path.join(usb_install_path, item)
+            dst = os.path.join(self.usb_dest, item)
+            try:
+                if os.path.isdir(src):
+                    if os.path.exists(dst):
+                        self.log_usb(f"📁 Mesclando pasta: {item}", "info")
+                        copy_tree(src, dst, self.log)
+                    else:
+                        shutil.copytree(src, dst)
+                        self.log_usb(f"📁 Copiado diretório: {item}", "success")
+                else:
+                    if os.path.exists(dst):
+                        if os.path.getsize(src) == os.path.getsize(dst):
+                            with open(src, 'rb') as f1, open(dst, 'rb') as f2:
+                                if f1.read() == f2.read():
+                                    self.log_usb(f"✅ Ignorado (igual): {item}", "info")
+                                    skipped_count += 1
+                                    continue
+                        shutil.copy2(src, dst)
+                        self.log_usb(f"📄 Atualizado: {item}", "success")
+                    else:
+                        shutil.copy2(src, dst)
+                        self.log_usb(f"📄 Copiado: {item}", "success")
+                if sys.platform == "win32":
+                    import ctypes
+                    FILE_ATTRIBUTE_HIDDEN = 0x02
+                    ctypes.windll.kernel32.SetFileAttributesW(dst, FILE_ATTRIBUTE_HIDDEN)
+                    self.log_usb(f"👁️  Ocultado: {item}", "info")
+                success_count += 1
+            except Exception as e:
+                failed_count += 1
+                self.log_usb(f"❌ Falha ao copiar '{item}': {str(e)}", "error")
+        self.status_var.set(f"✅ Concluído: {success_count} itens instalados")
+        self.log_usb(f"\n🎉 INSTALAÇÃO CONCLUÍDA!\n   ✔️ Sucesso: {success_count}\n   ⚠️ Ignorados (iguais): {skipped_count}\n   ❌ Falhas: {failed_count}", "success")
+        try:
+            winsound.PlaySound(os.path.join(script_root, "success.wav"), winsound.SND_ASYNC)
+        except:
+            pass
+        self.update_usb_origin_status()
+
+    def log_usb(self, message, level="info"):
+        self.usb_log_text.config(state="normal")
+        tag = level
+        self.usb_log_text.insert(tk.END, message + "\n", tag)
+        self.usb_log_text.see(tk.END)
+        self.usb_log_text.config(state="disabled")
+
+if __name__ == "__main__":
+    ensure_dir("logs")
+    log_file = os.path.join("logs", "popstation.log")
+    if os.path.exists(log_file):
+        open(log_file, "w", encoding="utf-8").close()
+    script_root = get_script_root()
+    print(f"[INFO] Pasta raiz do script: {script_root}")
+    root = TkinterDnD.Tk()
+    app = PopsManagerGUI(root)
+    root.mainloop()
+```
+└── tony-backup-config.json
+```python
+{
+  "ignore_folders": [
+    ".idea .git .venv __pycache__ _STOP"
+  ],
+  "ignore_files": [
+    "requirements.txt SnapRestore.pyw estrutura.txt generate_project_structure.py SnapRestore 📅✅🧠.pyw"
+  ],
+  "code_extensions": [
+    ".py .md .txt .json .yaml .yml .css .html"
+  ],
+  "auto_update_check": true,
+  "cloud_provider": null,
+  "aws_bucket": "",
+  "aws_region": "us-east-1",
+  "aws_access_key": "",
+  "aws_secret_key": ""
+}
+
+```
+└── window_config.json
+```python
+{
+  "geometry": "1100x750",
+  "position": "+156+91"
+}
+
 ```
 ├── backups/
+│   ├── Nova pasta/
+├── FIX POPSTART/
 ├── logs/
+├── usb_install/
+│   ├── APPS/
+│   ├── PS2BBL/
+│   ├── system_usb/
+│   │   ├── THM/
+│   │   │   ├── thm_86981192287/

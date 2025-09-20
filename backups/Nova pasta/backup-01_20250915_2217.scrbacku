@@ -1,3 +1,5 @@
+# Título: base
+# Descrição: 
 ├── PopCraft/
 └── README.md
 ```python
@@ -792,6 +794,7 @@ def install_usb_files(destination_dir, log_callback=None):
                      f"   ❌ Falhas: {failed_count}", "success")
 
     return success_count > 0
+
 ```
 └── popstation_gui.py
 ```python
@@ -804,19 +807,24 @@ import datetime
 import winsound
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from popstation_core import *
+import os
+import json
 
 # ---------------- Configurações de GUI ----------------
-COVER_SIZE = (120, 120)
+COVER_SIZE = (150, 150)  # [MUDANÇA] Aumentado de (120, 120) para 150x150
 LOGO_SIZE = (60, 60)
 PREVIEW_SIZE = (240, 240)
 TILE_BG = "#2e2e2e"
 BG_COLOR = "#1b1b1b"
 TEXT_COLOR = "#e0e0e0"
 ACCENT_COLOR = "#4a90e2"
-ERROR_COLOR = "#ff5555"
+ERROR_COLOR = "#ff555b"
 SUCCESS_COLOR = "#50fa7b"
 WARNING_COLOR = "#f1fa8c"
 CURRENT_VERSION = "4.3"
+
+# [REMOVIDO] Arquivo de configuração da janela — NÃO USADO MAIS
+# WINDOW_CONFIG_FILE = "window_config.json"
 
 # ---------------- Tooltip de Imagem ----------------
 class ImageTooltip:
@@ -852,13 +860,16 @@ class ImageTooltip:
             self.tooltip_window.destroy()
             self.tooltip_window = None
 
+
 # ---------------- GUI Principal ----------------
 class PopsManagerGUI:
     def __init__(self, root):
         self.root = root
         root.title(f"POPStation v{CURRENT_VERSION}")
-        root.geometry("1100x750")
+        # [REMOVIDO] Não carrega configuração da janela
+        root.geometry("1100x750")  # ✅ Tamanho fixo padrão
         root.configure(bg=BG_COLOR)
+        
         self.current_theme = "dark"
         self.retro_mode = False
         self.files = []
@@ -877,6 +888,9 @@ class PopsManagerGUI:
         script_root = get_script_root()
         print(f"[INFO] Pasta raiz do script: {script_root}")
 
+        # [REMOVIDO] Carregamento de configuração da janela foi removido
+        # self.load_window_config()  # ❌ REMOVIDO
+
         self.create_menu()
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
@@ -884,23 +898,26 @@ class PopsManagerGUI:
         self.tab_convert = ttk.Frame(self.notebook)
         self.tab_manage = ttk.Frame(self.notebook)
         self.tab_advanced = ttk.Frame(self.notebook)
-        self.tab_usb_install = ttk.Frame(self.notebook)  # ✅ NOVA ABA
+        self.tab_usb_install = ttk.Frame(self.notebook)
         self.tab_console = ttk.Frame(self.notebook)
 
         self.notebook.add(self.tab_convert, text="🎮 Conversão de Jogos")
         self.notebook.add(self.tab_manage, text="📁 Gerenciamento de Jogos")
         self.notebook.add(self.tab_advanced, text="🔄 Conversões Avançadas")
-        self.notebook.add(self.tab_usb_install, text="🔌 Installs USB")  # ✅ ANTES DA CONSOLE
+        self.notebook.add(self.tab_usb_install, text="🔌 Installs USB")
         self.notebook.add(self.tab_console, text="⌨️ Console")
 
         self.setup_convert_tab()
         self.setup_manage_tab()
         self.setup_advanced_tab()
-        self.setup_usb_install_tab()   # ✅ NOVA FUNÇÃO
+        self.setup_usb_install_tab()
         self.setup_console_tab()
 
         root.bind("<Control-Shift-R>", self.toggle_retro_mode)
         self.setup_drag_drop()
+
+        # [REMOVIDO] Evento de fechamento ajustado — não salva nada
+        # root.protocol("WM_DELETE_WINDOW", self.on_closing)  # ❌ REMOVIDO
 
     def create_menu(self):
         menubar = tk.Menu(self.root)
@@ -946,7 +963,6 @@ class PopsManagerGUI:
         ttk.Button(btn_frame, text="📁 Selecionar Arquivos", command=self.select_files).pack(pady=2)
         ttk.Button(btn_frame, text="🖼️ Selecionar Capas", command=self.select_covers).pack(pady=2)
         ttk.Button(btn_frame, text="🔖 Selecionar Logos", command=self.select_logos).pack(pady=2)
-
         self.listbox = tk.Listbox(frame_files, width=80, height=10, bg="#2b2b2b", fg=TEXT_COLOR)
         self.listbox.pack(side="left", padx=5, pady=5, fill="both", expand=True)
 
@@ -981,6 +997,31 @@ class PopsManagerGUI:
         self.log_text.tag_config("warning", foreground=WARNING_COLOR)
 
     def setup_manage_tab(self):
+        # [NOVO] Frame principal para contagem e uso de disco
+        top_frame = tk.Frame(self.tab_manage, bg=BG_COLOR)
+        top_frame.pack(fill="x", padx=5, pady=5)
+
+        # [NOVO] Contagem de jogos
+        self.games_count_label = tk.Label(
+            top_frame,
+            text="🔍 Jogos: 0",
+            bg=BG_COLOR,
+            fg=TEXT_COLOR,
+            font=("Arial", 10, "bold")
+        )
+        self.games_count_label.pack(side="left", padx=10)
+
+        # [NOVO] Espaço em disco
+        self.disk_usage_label = tk.Label(
+            top_frame,
+            text="💾 Uso: -- / -- (---% livre)",
+            bg=BG_COLOR,
+            fg=TEXT_COLOR,
+            font=("Arial", 9)
+        )
+        self.disk_usage_label.pack(side="right", padx=10)
+
+        # --- Pesquisa ---
         search_frame = tk.Frame(self.tab_manage, bg=BG_COLOR)
         search_frame.pack(fill="x", padx=5, pady=5)
         tk.Label(search_frame, text="🔍 Pesquisar:", bg=BG_COLOR, fg=TEXT_COLOR).pack(side="left", padx=5)
@@ -990,6 +1031,7 @@ class PopsManagerGUI:
         ttk.Button(search_frame, text="📊 Exportar CSV", command=self.export_csv).pack(side="right", padx=5)
         ttk.Button(search_frame, text="📂 Abrir Pasta", command=self.open_target_folder).pack(side="right", padx=5)
 
+        # --- Canvas com scroll ---
         self.canvas = tk.Canvas(self.tab_manage, bg=BG_COLOR, highlightthickness=0)
         self.scrollbar = tk.Scrollbar(self.tab_manage, orient="vertical", command=self.canvas.yview)
         self.scrollable_frame = tk.Frame(self.canvas, bg=BG_COLOR)
@@ -998,6 +1040,9 @@ class PopsManagerGUI:
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.pack(side="left", fill="both", expand=True, padx=5)
         self.scrollbar.pack(side="right", fill="y")
+
+        # [NOVO] Atualiza contagem e uso de disco assim que a aba é aberta
+        self.refresh_manage_tab()
 
     def setup_advanced_tab(self):
         frame = ttk.Frame(self.tab_advanced)
@@ -1011,14 +1056,14 @@ class PopsManagerGUI:
         self.advanced_file_label.pack(side="left", padx=5, pady=5)
         ttk.Button(file_frame, text="Selecionar Arquivo", command=self.select_advanced_file).pack(side="left", padx=5, pady=5)
 
-        # --- Formato de saída (com ZSO!) ---
+        # --- Formato de saída ---
         format_frame = ttk.LabelFrame(frame, text="2. Escolha o formato de saída")
         format_frame.pack(fill="x", pady=5)
         self.output_format = tk.StringVar(value="cue_bin")
         formats = [
             ("CUE + BIN", "cue_bin"),
             ("ISO", "iso"),
-            ("ZSO", "zso"),           # ✅ NOVA OPÇÃO
+            ("ZSO", "zso"),
             ("GDI", "gdi"),
             ("CHD", "chd"),
             ("VCD", "vcd"),
@@ -1045,11 +1090,7 @@ class PopsManagerGUI:
     def setup_usb_install_tab(self):  # ✅ ✅ ✅ ABA COMPLETA CORRIGIDA
         frame = ttk.Frame(self.tab_usb_install)
         frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # Título
         tk.Label(frame, text="🔌 Installs USB", font=("Arial", 14, "bold"), bg=BG_COLOR, fg=ACCENT_COLOR).pack(pady=10)
-
-        # Descrição
         desc = tk.Label(
             frame,
             text="Copie toda a estrutura da pasta 'usb_install' para seu dispositivo USB.\nTodos os arquivos e pastas serão copiados e ocultados automaticamente.",
@@ -1057,19 +1098,14 @@ class PopsManagerGUI:
         )
         desc.pack(pady=5)
 
-        # --- Seleção de destino ---
         dest_frame = ttk.LabelFrame(frame, text="📂 Selecione o diretório de destino (USB)")
         dest_frame.pack(fill="x", pady=10, padx=20)
-
         self.usb_dest_label = tk.Label(dest_frame, text="Nenhum destino selecionado", bg=BG_COLOR, fg=TEXT_COLOR, anchor="w")
         self.usb_dest_label.pack(side="left", padx=10, pady=10, fill="x", expand=True)
-
         ttk.Button(dest_frame, text="📁 Selecionar Pasta", command=self.select_usb_destination).pack(side="right", padx=10, pady=10)
 
-        # --- Diretório de origem (mostrado como informação) ---
         origin_frame = ttk.LabelFrame(frame, text="📦 Origem (automática)")
         origin_frame.pack(fill="x", pady=10, padx=20)
-
         script_root = get_script_root()
         usb_install_path = os.path.join(script_root, "usb_install")
         self.usb_origin_label = tk.Label(
@@ -1079,21 +1115,16 @@ class PopsManagerGUI:
         )
         self.usb_origin_label.pack(side="left", padx=10, pady=10, fill="x", expand=True)
 
-        # --- Status de existência da pasta de origem ---
         self.origin_status = tk.Label(
             origin_frame,
             text="⏳ Verificando...",
             bg=BG_COLOR, fg=WARNING_COLOR, font=("Arial", 9, "italic")
         )
         self.origin_status.pack(side="right", padx=10, pady=10)
-
-        # Atualiza status inicial
         self.update_usb_origin_status()
 
-        # --- Botão de instalação ---
         btn_frame = tk.Frame(frame, bg=BG_COLOR)
         btn_frame.pack(pady=20)
-
         self.install_btn = ttk.Button(
             btn_frame,
             text="🚀 Iniciar Instalação USB",
@@ -1102,18 +1133,14 @@ class PopsManagerGUI:
         )
         self.install_btn.pack(ipadx=20, ipady=8)
 
-        # --- Log de operação ---
         log_frame = ttk.LabelFrame(frame, text="📝 Log de Operação")
         log_frame.pack(fill="both", expand=True, pady=10, padx=20)
-
         self.usb_log_text = tk.Text(log_frame, height=12, bg="#1b1b1b", fg=TEXT_COLOR, font=("Consolas", 9))
         self.usb_log_text.pack(fill="both", expand=True, padx=10, pady=10)
         self.usb_log_text.tag_config("error", foreground=ERROR_COLOR)
         self.usb_log_text.tag_config("success", foreground=SUCCESS_COLOR)
         self.usb_log_text.tag_config("warning", foreground=WARNING_COLOR)
         self.usb_log_text.tag_config("info", foreground="#aaa")
-
-        # Mensagem inicial
         self.usb_log_text.insert("1.0", ">>> Aguardando seleção de destino...\n", "info")
         self.usb_log_text.config(state="disabled")
 
@@ -1212,7 +1239,7 @@ class PopsManagerGUI:
             self.target_dir = folder
             self.dest_label.config(text=f"📁 Pasta destino: {folder}")
             self.log(f"✅ Pasta selecionada: {folder}")
-            self.refresh_manage_tab()
+            self.refresh_manage_tab()  # [NOVO] Atualiza contagem e uso de disco
 
     def open_target_folder(self):
         if self.target_dir and os.path.exists(self.target_dir):
@@ -1290,26 +1317,35 @@ class PopsManagerGUI:
         self.logos = {}
         self.listbox.delete(0, tk.END)
         self.log("📋 Lista limpa.")
-        self.refresh_manage_tab()
+        self.refresh_manage_tab()  # [NOVO] Atualiza contagem após processamento
 
     def refresh_manage_tab(self):
+        """Atualiza contagem de jogos e uso de disco + exibe tiles em ordem alfabética"""
         self.cover_images.clear()
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
         self.game_tiles = {}
+
         if not self.target_dir:
+            self.games_count_label.config(text="🔍 Jogos: 0")
+            self.disk_usage_label.config(text="💾 Uso: -- / -- (---% livre)")
             return
+
         conf_file = os.path.join(self.target_dir, "conf_apps.cfg")
         art_dir = os.path.join(self.target_dir, ART_DIR_NAME)
         pops_dir = os.path.join(self.target_dir, POPS_DIR_NAME)
+
         if not os.path.exists(conf_file):
+            self.games_count_label.config(text="🔍 Jogos: 0")
+            self.disk_usage_label.config(text=f"💾 Uso: -- / -- (---% livre)")
             return
+
+        # [NOVO] Contar jogos válidos
         games = []
         with open(conf_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if "=" in line:
                     game_key, elf = line.strip().split("=", 1)
-                    elf_path = os.path.join(self.target_dir, os.path.basename(elf.replace("mass:/", "")))
                     elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
                     if not elf_name_no_ext:
                         continue
@@ -1317,32 +1353,55 @@ class PopsManagerGUI:
                     valid_game = os.path.exists(vcd_path) or any(
                         os.path.exists(os.path.join(pops_dir, f"{elf_name_no_ext}{ext}")) for ext in SUPPORTED_FORMATS
                     )
-                    if not valid_game:
-                        continue
-                    cover_path = logo_path = None
-                    for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
-                        test_cover = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_COV{ext}")
-                        test_logo = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_LGO{ext}")
-                        if os.path.exists(test_cover):
-                            cover_path = test_cover
-                        if os.path.exists(test_logo):
-                            logo_path = test_logo
-                    games.append((game_key, elf_path, vcd_path, cover_path, logo_path, elf_name_no_ext))
-        games.sort(key=lambda x: x[0].lower())
+                    if valid_game:
+                        games.append(game_key)
+
+        # [MUDANÇA CRÍTICA] Ordena os jogos em ordem alfabética (ignorando maiúsculas/minúsculas)
+        games.sort(key=str.lower)
+
+        count = len(games)
+        self.games_count_label.config(text=f"🔍 Jogos: {count}")
+
+        # [NOVO] Calcular uso de disco
+        try:
+            usage = shutil.disk_usage(self.target_dir)
+            total_gb = usage.total / (1024**3)
+            used_gb = usage.used / (1024**3)
+            free_gb = usage.free / (1024**3)
+            percent_used = (used_gb / total_gb) * 100 if total_gb > 0 else 0
+            self.disk_usage_label.config(
+                text=f"💾 Uso: {used_gb:.1f} GB / {total_gb:.1f} GB ({free_gb:.1f} GB livre)"
+            )
+        except Exception as e:
+            self.disk_usage_label.config(text=f"💾 Uso: ❌ Não acessível ({str(e)})")
+
+        # [NOVO] Busca por arquivos de capa/logo
         search_text = self.search_var.get().lower()
         columns = 5
         idx = 0
-        for game_key, elf_path, vcd_path, cover_path, logo_path, elf_name_no_ext in games:
-            if search_text and search_text not in game_key.lower() and search_text not in elf_name_no_ext.lower():
+        for game_key in games:  # ✅ AGORA ESTÁ EM ORDEM ALFABÉTICA!
+            if search_text and search_text not in game_key.lower():
                 continue
             frame = tk.Frame(self.scrollable_frame, bg=TILE_BG, padx=5, pady=5, relief="raised", bd=1)
             frame.grid(row=idx // columns, column=idx % columns, padx=10, pady=10, sticky="n")
             self.game_tiles[game_key] = frame
             idx += 1
+
+            elf_name_no_ext = get_elf_name_from_game_key(game_key, self.target_dir)
+            cover_path = None
+            logo_path = None
+            for ext in [".png", ".jpg", ".jpeg", ".bmp"]:
+                test_cover = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_COV{ext}")
+                test_logo = os.path.join(art_dir, f"XX.{elf_name_no_ext}.ELF_LGO{ext}")
+                if os.path.exists(test_cover):
+                    cover_path = test_cover
+                if os.path.exists(test_logo):
+                    logo_path = test_logo
+
             if cover_path and os.path.exists(cover_path):
                 try:
                     img = Image.open(cover_path)
-                    img.thumbnail(COVER_SIZE)
+                    img.thumbnail(COVER_SIZE)  # ✅ Usa novo tamanho
                     photo = ImageTk.PhotoImage(img)
                     self.cover_images[cover_path] = photo
                     lbl_cover = tk.Label(frame, image=photo, bg=TILE_BG)
@@ -1355,6 +1414,7 @@ class PopsManagerGUI:
             else:
                 lbl_cover = tk.Label(frame, text="Sem capa", width=15, height=7, bg=TILE_BG, fg=TEXT_COLOR)
                 lbl_cover.pack(pady=2)
+
             if logo_path and os.path.exists(logo_path):
                 try:
                     img = Image.open(logo_path)
@@ -1366,9 +1426,12 @@ class PopsManagerGUI:
                     ImageTooltip(lbl_logo, logo_path, PREVIEW_SIZE)
                 except:
                     pass
-            tk.Label(frame, text=game_key, bg=TILE_BG, fg=TEXT_COLOR, wraplength=120, font=("Arial", 9, "bold")).pack()
-            tk.Label(frame, text=os.path.basename(elf_path), bg=TILE_BG, fg=TEXT_COLOR, font=("Arial", 8)).pack()
+
+            tk.Label(frame, text=game_key, bg=TILE_BG, fg=TEXT_COLOR, wraplength=150, font=("Arial", 9, "bold")).pack()
+            tk.Label(frame, text=os.path.basename(get_elf_name_from_game_key(game_key, self.target_dir)) + ".ELF", bg=TILE_BG, fg=TEXT_COLOR, font=("Arial", 8)).pack()
+            vcd_path = os.path.join(pops_dir, f"{elf_name_no_ext}.VCD")
             tk.Label(frame, text=os.path.basename(vcd_path) if os.path.exists(vcd_path) else "VCD ausente", bg=TILE_BG, fg=TEXT_COLOR, font=("Arial", 8)).pack()
+
             menu = tk.Menu(self.root, tearoff=0)
             menu.add_command(label="✏️ Renomear", command=lambda g=game_key: self.rename_game(g))
             menu.add_command(label="🗑️ Apagar", command=lambda g=game_key: self.delete_game(g))
@@ -1489,7 +1552,6 @@ class PopsManagerGUI:
         if convert_vcd_to_cue_bin_with_pops2cue(temp_vcd, log_callback=self.log):
             output_cue = os.path.splitext(temp_vcd)[0] + ".cue"
             output_bin = os.path.splitext(temp_vcd)[0] + ".bin"
-            # ✅ DELETA O ARQUIVO VCD TEMPORÁRIO
             try:
                 os.remove(temp_vcd)
                 self.log(f"🗑️ Arquivo temporário deletado: {os.path.basename(temp_vcd)}", "success")
@@ -1670,7 +1732,6 @@ class PopsManagerGUI:
             self.advanced_output_label.config(text=f"Pasta: {folder}")
             self.log(f"📁 Pasta de saída selecionada: {folder}", advanced=True)
 
-    # ✅ ✅ ✅ MÉTODO ATUALIZADO: Conversão Avançada com suporte a ISO ↔ ZSO
     def start_advanced_conversion(self):
         if not hasattr(self, 'advanced_files') or not self.advanced_files:
             messagebox.showwarning("Aviso", "Selecione um arquivo de origem!")
@@ -1687,9 +1748,9 @@ class PopsManagerGUI:
         cue2pops_path = os.path.join(script_root, CUE2POPS_EXE)
         pops2cue_path = os.path.join(script_root, POPS2CUE_EXE)
         vcd2iso_path = os.path.join(script_root, VCD2ISO_EXE)
-        ziso_path = os.path.join(script_root, ZISO_EXE)  # ✅ NOVA CONSTANTE
+        ziso_path = os.path.join(script_root, ZISO_EXE)
+
         try:
-            # ✅ CONVERSÃO PARA CHD
             if output_format == "chd" and input_ext in [".cue", ".iso", ".gdi"]:
                 if not os.path.exists(chdman_path):
                     self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
@@ -1697,7 +1758,7 @@ class PopsManagerGUI:
                 output_chd = os.path.join(self.advanced_output_folder, f"{base_name}.chd")
                 if convert_to_chd(input_file, output_chd, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ CHD salvo: {output_chd}", "success", advanced=True)
-            # ✅ CHD → CUE+BIN
+
             elif input_ext == ".chd" and output_format == "cue_bin":
                 if not os.path.exists(chdman_path):
                     self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
@@ -1720,7 +1781,7 @@ class PopsManagerGUI:
                     self.log("❌ Falha na extração do CHD.", "error", advanced=True)
                 if 'temp_dir' in locals() and temp_dir:
                     shutil.rmtree(temp_dir, ignore_errors=True)
-            # ✅ CHD → GDI
+
             elif input_ext == ".chd" and output_format == "gdi":
                 if not os.path.exists(chdman_path):
                     self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
@@ -1728,7 +1789,7 @@ class PopsManagerGUI:
                 output_gdi = os.path.join(self.advanced_output_folder, f"{base_name}.gdi")
                 if convert_chd_to_gdi(input_file, output_gdi, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ GDI salvo: {output_gdi}", "success", advanced=True)
-            # ✅ CHD → ISO
+
             elif input_ext == ".chd" and output_format == "iso":
                 if not os.path.exists(chdman_path):
                     self.log(f"❌ {CHDMAN_EXE} não encontrado!", "error", advanced=True)
@@ -1736,7 +1797,7 @@ class PopsManagerGUI:
                 output_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
                 if convert_chd_to_iso_only(input_file, output_iso, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
-            # ✅ CUE → VCD (com verificação de .bin)
+
             elif input_ext == ".cue" and output_format == "vcd":
                 if not os.path.exists(cue2pops_path):
                     self.log(f"❌ {CUE2POPS_EXE} não encontrado!", "error", advanced=True)
@@ -1749,13 +1810,13 @@ class PopsManagerGUI:
                 output_path = os.path.join(self.advanced_output_folder, f"{base_name}.vcd")
                 if convert_cue_to_vcd(input_file, output_path, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ VCD salvo: {output_path}", "success", advanced=True)
-            # ✅ ISO/BIN → VCD (cópia direta)
+
             elif input_ext in [".iso", ".bin"] and output_format == "vcd":
                 self.log(f"▶️ Convertendo {os.path.basename(input_file)} para VCD...", advanced=True)
                 output_path = os.path.join(self.advanced_output_folder, f"{base_name}.vcd")
                 convert_to_vcd(input_file, output_path, lambda msg: self.log(msg, advanced=True))
                 self.log(f"✅ VCD salvo: {output_path}", "success", advanced=True)
-            # ✅ ✅ ✅ VCD → CUE+BIN (com POPS2CUE.EXE) - DELETA VCD TEMPORÁRIO
+
             elif input_ext == ".vcd" and output_format == "cue_bin":
                 if not os.path.exists(pops2cue_path):
                     self.log(f"❌ {POPS2CUE_EXE} não encontrado!", "error", advanced=True)
@@ -1769,7 +1830,6 @@ class PopsManagerGUI:
                     self.log(f"✅ CUE+BIN salvos em: {self.advanced_output_folder}", "success", advanced=True)
                     self.log(f"   {os.path.basename(output_cue)}", "success", advanced=True)
                     self.log(f"   {os.path.basename(output_bin)}", "success", advanced=True)
-                    # ✅ DELETA O ARQUIVO VCD TEMPORÁRIO
                     try:
                         os.remove(temp_vcd)
                         self.log(f"🗑️ Arquivo temporário deletado: {os.path.basename(temp_vcd)}", "success", advanced=True)
@@ -1777,7 +1837,7 @@ class PopsManagerGUI:
                         self.log(f"⚠️ Não foi possível deletar o VCD temporário: {e}", "warning", advanced=True)
                 else:
                     self.log("❌ Falha na conversão com POPS2CUE.EXE.", "error", advanced=True)
-            # ✅ VCD → ISO
+
             elif input_ext == ".vcd" and output_format == "iso":
                 if not os.path.exists(vcd2iso_path):
                     self.log(f"❌ {VCD2ISO_EXE} não encontrado!", "error", advanced=True)
@@ -1786,7 +1846,7 @@ class PopsManagerGUI:
                 output_iso = os.path.join(self.advanced_output_folder, f"{base_name}.iso")
                 if convert_vcd_to_iso(input_file, output_iso, lambda msg: self.log(msg, advanced=True)):
                     self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
-            # ✅ ✅ ✅ ISO → ZSO
+
             elif input_ext == ".iso" and output_format == "zso":
                 if not os.path.exists(ziso_path):
                     self.log(f"❌ {ZISO_EXE} não encontrado! Certifique-se de que está na pasta do script.", "error", advanced=True)
@@ -1797,7 +1857,7 @@ class PopsManagerGUI:
                     self.log(f"✅ ZSO salvo: {output_zso}", "success", advanced=True)
                 else:
                     self.log("❌ Falha na conversão ISO → ZSO.", "error", advanced=True)
-            # ✅ ✅ ✅ ZSO → ISO
+
             elif input_ext == ".zso" and output_format == "iso":
                 if not os.path.exists(ziso_path):
                     self.log(f"❌ {ZISO_EXE} não encontrado! Certifique-se de que está na pasta do script.", "error", advanced=True)
@@ -1808,18 +1868,19 @@ class PopsManagerGUI:
                     self.log(f"✅ ISO salvo: {output_iso}", "success", advanced=True)
                 else:
                     self.log("❌ Falha na conversão ZSO → ISO.", "error", advanced=True)
+
             else:
                 self.log("❌ Conversão não suportada para esta combinação.", "error", advanced=True)
                 return
-            # ✅ TOCA SOM AO FINALIZAR (só se não houve erro)
+
             try:
                 winsound.PlaySound(os.path.join(script_root, "success.wav"), winsound.SND_ASYNC)
             except:
                 pass
+
         except Exception as e:
             self.log(f"❌ Erro: {e}", "error", advanced=True)
 
-    # ✅ ✅ ✅ LÓGICA DA ABA 🔌 Installs USB — CORRIGIDA E APRIMORADA
     def update_usb_origin_status(self):
         script_root = get_script_root()
         usb_install_path = os.path.join(script_root, "usb_install")
@@ -1834,7 +1895,6 @@ class PopsManagerGUI:
         folder = filedialog.askdirectory(title="Selecione a pasta de destino no USB")
         if not folder:
             return
-
         self.usb_dest = folder
         self.usb_dest_label.config(text=f"📁 {folder}")
         self.usb_log_text.config(state="normal")
@@ -1847,84 +1907,60 @@ class PopsManagerGUI:
         if not hasattr(self, 'usb_dest') or not self.usb_dest:
             messagebox.showwarning("⚠️ Aviso", "Por favor, selecione um destino no USB!")
             return
-
         script_root = get_script_root()
         usb_install_path = os.path.join(script_root, "usb_install")
-
         if not os.path.exists(usb_install_path):
             self.log_usb("❌ Pasta 'usb_install' não existe no diretório do script!", "error")
             return
-
         items = os.listdir(usb_install_path)
         if not items:
             self.log_usb("⚠️ A pasta 'usb_install' está vazia. Nada para copiar.", "warning")
             return
-
         total_items = len(items)
         self.log_usb(f"🚀 Iniciando instalação USB... ({total_items} itens)", "info")
-
         success_count = 0
         failed_count = 0
         skipped_count = 0
-
         for item in items:
             src = os.path.join(usb_install_path, item)
             dst = os.path.join(self.usb_dest, item)
-
             try:
                 if os.path.isdir(src):
-                    # ✅ MESCLA PASTAS EXISTENTES — NÃO SUBSTITUI!
                     if os.path.exists(dst):
-                        # Copia recursivamente o conteúdo interno, mantendo o que já estava lá
                         self.log_usb(f"📁 Mesclando pasta: {item}", "info")
-                        copy_tree(src, dst, self.log)  # ✅ USANDO O LOG PADRÃO DO APP
+                        copy_tree(src, dst, self.log)
                     else:
                         shutil.copytree(src, dst)
                         self.log_usb(f"📁 Copiado diretório: {item}", "success")
-
                 else:
-                    # ✅ ARQUIVO: SÓ SOBRESCREVE SE DIFERENTE
                     if os.path.exists(dst):
-                        # Verifica se os arquivos são idênticos (tamanho + conteúdo)
                         if os.path.getsize(src) == os.path.getsize(dst):
                             with open(src, 'rb') as f1, open(dst, 'rb') as f2:
                                 if f1.read() == f2.read():
                                     self.log_usb(f"✅ Ignorado (igual): {item}", "info")
                                     skipped_count += 1
                                     continue
-                        # Se diferente, sobrescreve
                         shutil.copy2(src, dst)
                         self.log_usb(f"📄 Atualizado: {item}", "success")
                     else:
                         shutil.copy2(src, dst)
                         self.log_usb(f"📄 Copiado: {item}", "success")
-
-                # ✅ OCULTAR ITEM NO WINDOWS (arquivo OU pasta)
                 if sys.platform == "win32":
                     import ctypes
                     FILE_ATTRIBUTE_HIDDEN = 0x02
                     ctypes.windll.kernel32.SetFileAttributesW(dst, FILE_ATTRIBUTE_HIDDEN)
                     self.log_usb(f"👁️  Ocultado: {item}", "info")
-
                 success_count += 1
-
             except Exception as e:
                 failed_count += 1
                 self.log_usb(f"❌ Falha ao copiar '{item}': {str(e)}", "error")
 
-        # ✅ FINALIZAÇÃO COM DETALHAMENTO
         self.status_var.set(f"✅ Concluído: {success_count} itens instalados")
-        self.log_usb(f"\n🎉 INSTALAÇÃO CONCLUÍDA!\n"
-                     f"   ✔️ Sucesso: {success_count}\n"
-                     f"   ⚠️ Ignorados (iguais): {skipped_count}\n"
-                     f"   ❌ Falhas: {failed_count}", "success")
-
+        self.log_usb(f"\n🎉 INSTALAÇÃO CONCLUÍDA!\n   ✔️ Sucesso: {success_count}\n   ⚠️ Ignorados (iguais): {skipped_count}\n   ❌ Falhas: {failed_count}", "success")
         try:
             winsound.PlaySound(os.path.join(script_root, "success.wav"), winsound.SND_ASYNC)
         except:
             pass
-
-        # Atualiza status da origem
         self.update_usb_origin_status()
 
     def log_usb(self, message, level="info"):
@@ -1934,18 +1970,18 @@ class PopsManagerGUI:
         self.usb_log_text.see(tk.END)
         self.usb_log_text.config(state="disabled")
 
+
 if __name__ == "__main__":
     ensure_dir("logs")
     log_file = os.path.join("logs", "popstation.log")
     if os.path.exists(log_file):
         open(log_file, "w", encoding="utf-8").close()
-
     script_root = get_script_root()
     print(f"[INFO] Pasta raiz do script: {script_root}")
-
     root = TkinterDnD.Tk()
     app = PopsManagerGUI(root)
     root.mainloop()
+
 ```
 └── tony-backup-config.json
 ```python
@@ -1968,7 +2004,16 @@ if __name__ == "__main__":
 }
 
 ```
+└── window_config.json
+```python
+{
+  "geometry": "1100x750",
+  "position": "+156+91"
+}
+
+```
 ├── backups/
+│   ├── Nova pasta/
 ├── FIX POPSTART/
 ├── logs/
 ├── usb_install/
